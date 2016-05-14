@@ -7,6 +7,11 @@
 //   Miguel de Icaza
 //
 // (C) Novell, Inc 2004
+// (C) 2016 Xamarin Inc
+//
+// Missing features:
+// * Add support for packaging native libraries, extracting at runtime and setting the library path.
+// * Implement --list-targets lists all the available remote targets
 //
 using System;
 using System.Diagnostics;
@@ -17,8 +22,9 @@ using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text;
 using IKVM.Reflection;
-
-
+using System.Linq;
+using System.Diagnostics;
+using System.Net;
 using System.Threading.Tasks;
 
 class MakeBundle {
@@ -40,6 +46,12 @@ class MakeBundle {
 	static bool skip_scan;
 	static string ctor_func;
 	static bool quiet;
+	static string cross_target = null;
+	static string fetch_target = null;
+	static bool custom_mode = true;
+	static string embedded_options = null;
+	static string runtime = null;
+	static string target_server = "https://runtimes.go-mono.com/raw/";
 	
 	static int Main (string [] args)
 	{
@@ -58,7 +70,44 @@ class MakeBundle {
 			case "-c":
 				compile_only = true;
 				break;
+
+			case "--local-targets":
+				CommandLocalTargets ();
+				return 0;
+
+			case "--cross":
+				if (i+1 == top){
+					Help (); 
+					return 1;
+				}
+				custom_mode = false;
+				autodeps = true;
+				cross_target = args [++i];
+				break;
+
+			case "--fetch-target":
+				if (i+1 == top){
+					Help (); 
+					return 1;
+				}
+				fetch_target = args [++i];
+				break;
+
+			case "--list-targets":
+				var wc = new WebClient ();
+				var s = wc.DownloadString (new Uri (target_server + "target-list.txt"));
+				Console.WriteLine ("Cross-compilation targets available:\n" + s);
 				
+				return 0;
+				
+			case "--target-server":
+				if (i+1 == top){
+					Help (); 
+					return 1;
+				}
+				target_server = args [++i];
+				break;
+
 			case "-o": 
 				if (i+1 == top){
 					Help (); 
@@ -193,11 +242,58 @@ class MakeBundle {
 		foreach (string file in assemblies)
 			if (!QueueAssembly (files, file))
 				return 1;
-			
-		GenerateBundles (files);
-		//GenerateJitWrapper ();
+
+		if (fetch_target != null){
+			var truntime = Path.Combine (targets_dir, fetch_target, "mono");
+			Directory.CreateDirectory (Path.GetDirectoryName (truntime));
+			var wc = new WebClient ();
+			var uri = new Uri ($"{target_server}{fetch_target}");
+			try {
+				wc.DownloadFile (uri, truntime);
+			} catch {
+				Console.Error.WriteLine ($"Failure to download the specified runtime from {uri}");
+				File.Delete (truntime);
+				return 1;
+			}
+			return 0;
+		}
+		
+		if (custom_mode)
+			GenerateBundles (files);
+		else {
+			if (cross_target == "default")
+				runtime = null;
+			else {
+				var truntime = Path.Combine (targets_dir, cross_target, "mono");
+				if (!File.Exists (truntime)){
+					Console.Error.WriteLine ($"The runtime for the {cross_target} does not exist, use --fetch-target {cross_target} to download first");
+					return 1;
+				}
+			}				
+			GeneratePackage (files);
+		}
 		
 		return 0;
+	}
+
+	static string targets_dir = Path.Combine (Environment.GetFolderPath (Environment.SpecialFolder.Personal), ".mono", "targets");
+	
+	static void CommandLocalTargets ()
+	{
+		string [] targets;
+
+		Console.WriteLine ("Available targets:");
+		Console.WriteLine ("\tdefault\t- Current System Mono");
+		try {
+			targets = Directory.GetDirectories (targets_dir);
+		} catch {
+			return;
+		}
+		foreach (var target in targets){
+			var p = Path.Combine (target, "mono");
+			if (File.Exists (p))
+				Console.WriteLine ("\t{0}", Path.GetFileName (target));
+		}
 	}
 
 	static void WriteSymbol (StreamWriter sw, string name, long size)
@@ -710,6 +806,27 @@ void          mono_register_config_for_assembly (const char* assembly_name, cons
 	{
 		Console.WriteLine ("Usage is: mkbundle [options] assembly1 [assembly2...]\n\n" +
 				   "Options:\n" +
+<<<<<<< HEAD
+=======
+				   "    --config F          Bundle system config file `F'\n" +
+				   "    --config-dir D      Set MONO_CFG_DIR to `D'\n" +
+				   "    --deps              Turns on automatic dependency embedding (default on simple)\n" +
+				   "    -L path             Adds `path' to the search path for assemblies\n" +
+				   "    --machine-config F  Use the given file as the machine.config for the application.\n" +
+				   "    -o out              Specifies output filename\n" +
+				   "    --nodeps            Turns off automatic dependency embedding (default on custom)\n" +
+				   "    --skip-scan         Skip scanning assemblies that could not be loaded (but still embed them).\n" +
+				   "\n" + 
+				   "--simple   Simple mode does not require a C toolchain and can cross compile\n" + 
+				   "    --cross TARGET      Generates a binary for the given TARGET\n"+
+				   "    --local-targets     Lists locally available targets\n" +
+				   "    --list-targets      Lists available targets on the remote server\n" +
+				   "    --options OPTIONS   Embed the specified Mono command line options on target\n" +
+				   "    --runtime RUNTIME   Manually specifies the Mono runtime to use\n" +
+				   "    --target-server URL Specified a server to download targets from, default is " + target_server + "\n" +
+				   "\n" +
+				   "--custom   Builds a custom launcher, options for --custom\n" +
+>>>>>>> 2e3c905... mkbundle commands for cross compilation. (#2970)
 				   "    -c                  Produce stub only, do not compile\n" +
 				   "    -o out              Specifies output filename\n" +
 				   "    -oo obj             Specifies output filename for helper object file\n" +
