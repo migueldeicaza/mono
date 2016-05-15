@@ -806,8 +806,6 @@ void          mono_register_config_for_assembly (const char* assembly_name, cons
 	{
 		Console.WriteLine ("Usage is: mkbundle [options] assembly1 [assembly2...]\n\n" +
 				   "Options:\n" +
-<<<<<<< HEAD
-=======
 				   "    --config F          Bundle system config file `F'\n" +
 				   "    --config-dir D      Set MONO_CFG_DIR to `D'\n" +
 				   "    --deps              Turns on automatic dependency embedding (default on simple)\n" +
@@ -826,7 +824,6 @@ void          mono_register_config_for_assembly (const char* assembly_name, cons
 				   "    --target-server URL Specified a server to download targets from, default is " + target_server + "\n" +
 				   "\n" +
 				   "--custom   Builds a custom launcher, options for --custom\n" +
->>>>>>> 2e3c905... mkbundle commands for cross compilation. (#2970)
 				   "    -c                  Produce stub only, do not compile\n" +
 				   "    -o out              Specifies output filename\n" +
 				   "    -oo obj             Specifies output filename for helper object file\n" +
