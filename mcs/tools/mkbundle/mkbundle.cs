@@ -939,7 +939,16 @@ void          mono_register_config_for_assembly (const char* assembly_name, cons
 			Assembly a = universe.LoadFile (path);
 
 			foreach (AssemblyName an in a.GetReferencedAssemblies ()) {
-				a = universe.Load (an.FullName);
+				try {
+					a = universe.Load (an.FullName);
+				} catch (FileNotFoundException e){
+					a = universe.LoadFile (a.Name + ".dll");
+					if (a == null){
+						Console.Error.WriteLine ("Could not load this assembly referenced {0}.dll", a.Name);
+						return false;
+					}
+				}
+
 				if (!QueueAssembly (files, a.CodeBase))
 					return false;
 			}
