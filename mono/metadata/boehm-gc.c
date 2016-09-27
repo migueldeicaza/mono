@@ -708,7 +708,7 @@ mono_gc_alloc_vector (MonoVTable *vtable, size_t size, uintptr_t max_length)
 	}
 
 	obj->max_length = max_length;
-
+	obj->data = ((int8_t *)(&obj->data)) + sizeof (obj->data);
 	if (G_UNLIKELY (alloc_events))
 		mono_profiler_allocation (&obj->obj);
 
@@ -742,6 +742,7 @@ mono_gc_alloc_array (MonoVTable *vtable, size_t size, uintptr_t max_length, uint
 	}
 
 	obj->max_length = max_length;
+	obj->data = ((int8_t *)(&obj->data)) + sizeof (obj->data);
 
 	if (bounds_size)
 		obj->bounds = (MonoArrayBounds *) ((char *) obj + size - bounds_size);
