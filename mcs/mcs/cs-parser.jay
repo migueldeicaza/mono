@@ -3345,8 +3345,8 @@ literal
 	;
 
 dictionary_literal_expression
-	: OPEN_BRACKET CLOSE_BRACKET { $$ = new DictionaryLiteral (null, GetLocation ($1)); }
-	| OPEN_BRACKET keypair_list CLOSE_BRACKET  { $$= new DictionaryLiteral ((List<KeyPair>) $2, GetLocation ($1)); }
+	: OPEN_BRACKET_EXPR CLOSE_BRACKET { $$ = new DictionaryLiteral (null, GetLocation ($1)); }
+	| OPEN_BRACKET_EXPR keypair_list CLOSE_BRACKET  { $$= new DictionaryLiteral ((List<KeyPair>) $2, GetLocation ($1)); }
 	;
 
 keypair_list
@@ -3366,7 +3366,7 @@ keypair_list
 	;
 
 keypair 
-	: expression SEMICOLON expression
+	: expression COLON expression { $$ = new KeyPair ((Expression)$1, (Expression) $3); } 
 	;
 
 boolean_literal
