@@ -3326,6 +3326,7 @@ primary_expression
 	| anonymous_method_expression
 	| undocumented_expressions
 	| interpolated_string
+	| dictionary_literal_expression
 	;
 
 type_name_expression
@@ -3341,6 +3342,31 @@ literal
 	: boolean_literal
 	| LITERAL
 	| NULL			{ $$ = new NullLiteral (GetLocation ($1)); }
+	;
+
+dictionary_literal_expression
+	: OPEN_BRACKET CLOSE_BRACKET { $$ = new DictionaryLiteral (null, GetLocation ($1)); }
+	| OPEN_BRACKET keypair_list CLOSE_BRACKET  { $$= new DictionaryLiteral ((List<KeyPair>) $2, GetLocation ($1)); }
+	;
+
+keypair_list
+	: keypair 
+	  {
+		$$ = new List<KeyPair> (4) { (KeyPair) $1 };
+	  }
+	| keypair_list COMMA keypair 
+	  {
+		var pairs = (List<KeyPair>) $1;
+		if (pairs != null){
+			pairs.Add ((KeyPair) $3);
+			lbag.AppendTo (pairs, GetLocation ($2));
+		}
+		$$ = pairs;
+	  }
+	;
+
+keypair 
+	: expression SEMICOLON expression
 	;
 
 boolean_literal

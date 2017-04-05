@@ -12509,6 +12509,116 @@ namespace Mono.CSharp
 		}
 	}
 
+	public class KeyPair {
+		public Expression Key, Value;
+		
+		public KeyPair (Expression key, Expression value)
+		{
+			Key = key;
+			Value = value;
+		}
+
+		public KeyPair Clone (CloneContext clonectx)
+		{
+			var kc = Key.Clone (clonectx);
+			var vc = Value.Clone (clonectx);
+			return new KeyPair (kc, vc);
+		}
+	}
+	
+	public class DictionaryLiteral : Expression {
+		List<KeyPair> KeyPairs;
+		protected TypeSpec key_type, value_type;
+		
+		public DictionaryLiteral (List<KeyPair> keyPairs, Location loc)
+		{
+			KeyPairs = keyPairs;
+			this.loc = loc;
+		}
+
+		protected override void CloneTo (CloneContext clonectx, Expression t)
+		{
+			var target = (DictionaryLiteral) t;
+			if (KeyPairs == null)
+				return;
+			foreach (var kp in KeyPairs)
+				target.KeyPairs.Add (kp.Clone (clonectx));
+		}
+
+		Expression ResolveElement (ResolveContext rc, TypeInferenceContext tic, Expression e)
+		{
+			e = e.Resolve (rc);
+			if (e != null)
+				tic.AddCommonTypeBound (e.Type);
+
+			return e;
+		}
+		
+		bool ResolveKeys (ResolveContext rc, TypeInferenceContext tic)
+		{
+			foreach (var kp in KeyPairs){
+				var r = ResolveElement (rc, tic, kp.Key);
+				if (r == null)
+					return false;
+				kp.Key = r;
+			}
+			return true;
+		}
+
+		bool ResolveValues (ResolveContext rc, TypeInferenceContext tic)
+		{
+			foreach (var kp in KeyPairs){
+				var r = ResolveElement (rc, tic, kp.Value);
+				if (r == null)
+					return false;
+				kp.Value = r;
+			}
+			return true;
+		}
+		
+		TypeInferenceContext best_key_context, best_value_context;
+
+		protected override Expression DoResolve (ResolveContext rc)
+		{
+			best_key_context = new TypeInferenceContext ();
+			if (!ResolveKeys (rc, best_key_context))
+				return null;
+			best_key_context.FixAllTypes (rc);
+			
+			best_value_context = new TypeInferenceContext ();
+			if (!ResolveValues (rc, best_value_context))
+				return null;
+			best_value_context.FixAllTypes (rc);
+
+			key_type = best_key_context.InferredTypeArguments [0];
+			best_key_context = null;
+
+			value_type = best_value_context.InferredTypeArguments [0];
+			best_value_context = null;
+
+			if (key_type == null){
+				rc.Report.Error (-1, loc, "It is not possible to infer the type of the dictionary keys");
+				return null;
+			}
+			if (value_type == null){
+				rc.Report.Error (-1, loc, "It is not possible to infer the type of the dictionary values");
+				return null;
+			}
+			Console.WriteLine ("TODO: create a call to new Dictionary<{key_type},{value_type}>() { initializers } here");
+			return this;
+		}
+
+		public override Expression CreateExpressionTree (ResolveContext ec)
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override void Emit (EmitContext ec)
+		{
+			
+		}
+	}
+
 	public class InterpolatedString : Expression
 	{
 		readonly StringLiteral start, end;
