@@ -12620,18 +12620,18 @@ namespace Mono.CSharp
 				args.Add (new Argument (new IntConstant (rc.BuiltinTypes, init.Count, loc)));
 				return new NewInitialize (dict_type, args, new CollectionOrObjectInitializers (init, loc), loc).Resolve (rc);
 			}
-			Console.WriteLine ("WHOOPSIE DAISIES");
 			return this;
 		}
 
 		public override Expression CreateExpressionTree (ResolveContext ec)
 		{
+			// Not needed
 			throw new NotImplementedException ();
 		}
 
 		public override void Emit (EmitContext ec)
 		{
-			
+			// Not Needed
 		}
 	}
 
