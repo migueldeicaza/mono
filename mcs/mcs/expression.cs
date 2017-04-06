@@ -12604,7 +12604,23 @@ namespace Mono.CSharp
 				rc.Report.Error (-1, loc, "It is not possible to infer the type of the dictionary values");
 				return null;
 			}
-			Console.WriteLine ("TODO: create a call to new Dictionary<{key_type},{value_type}>() { initializers } here");
+			if (rc.Module.PredefinedTypes.Dictionary.Define ()){
+				var dict_type = new TypeExpression (rc.Module.PredefinedTypes.Dictionary.TypeSpec.MakeGenericType (rc, new [] { key_type, value_type }), loc);
+				var init = new List<Expression> ();
+
+				foreach (var kp in KeyPairs){
+					var init_args = new List<Expression> (2);
+					init_args.Add (kp.Key);
+					init_args.Add (kp.Value);
+					
+					init.Add (new CollectionElementInitializer (init_args, loc));
+				}
+
+				var args = new Arguments (1);
+				args.Add (new Argument (new IntConstant (rc.BuiltinTypes, init.Count, loc)));
+				return new NewInitialize (dict_type, args, new CollectionOrObjectInitializers (init, loc), loc).Resolve (rc);
+			}
+			Console.WriteLine ("WHOOPSIE DAISIES");
 			return this;
 		}
 
