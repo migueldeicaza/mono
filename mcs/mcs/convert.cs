@@ -347,6 +347,10 @@ namespace Mono.CSharp {
 
 					return TypeSpec.IsReferenceType (target_type) || target_type.Kind == MemberKind.PointerType;
 				}
+				if (expr_type == InternalType.DictionaryLiteralType){
+					Console.WriteLine ("Should check if {0} can convert to {1}, for now, we say yes", expr_type, target_type);
+					return true;
+				}
 
 				//
 				// Implicit dynamic conversion
@@ -1369,6 +1373,16 @@ namespace Mono.CSharp {
 			TypeSpec expr_type = expr.Type;
 			Expression e;
 
+			if (expr_type == InternalType.DictionaryLiteralType){
+
+				// First we need to probe that the type supports the signature and then create the variable
+				// and then load the contents into it.
+				var r = new CollectionElementInitializer (new List<Expression> () { expr }, expr.Location);
+				Console.WriteLine ("Attempting to convert an InternalDictionary into {0} => {1}", target_type, r);
+				var k = r.Resolve (ec);
+				return k;
+			}
+			
 			if (expr_type == target_type) {
 				if (expr_type != InternalType.NullLiteral && expr_type != InternalType.AnonymousMethod)
 					return expr;

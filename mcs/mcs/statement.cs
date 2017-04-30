@@ -1,4 +1,4 @@
-//
+﻿//
 // statement.cs: Statement representation for the IL tree.
 //
 // Authors:
@@ -2151,6 +2151,10 @@ namespace Mono.CSharp {
 
 					Initializer = Initializer.Resolve (bc);
 					if (Initializer != null) {
+						var dl = Initializer as DictionaryLiteral;
+						if (dl != null)
+							Initializer = dl.ResolveAsDictionary (bc);
+						
 						((VarExpr) type_expr).InferType (bc, Initializer);
 						type = type_expr.Type;
 					} else {

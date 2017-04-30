@@ -1,4 +1,4 @@
-//
+﻿//
 // expression.cs: Expression representation for the IL tree.
 //
 // Author:
@@ -1760,10 +1760,12 @@ namespace Mono.CSharp
 				}
 
 				var vexpr = ProbeType as VarExpr;
-				if (vexpr != null && vexpr.InferType (rc, expr)) {
-					probe_type_expr = vexpr.Type;
-					rc.Report.SetPrinter (prev_recorder);
-					return;
+				if (vexpr != null){
+					if (vexpr.InferType (rc, expr)) {
+						probe_type_expr = vexpr.Type;
+						rc.Report.SetPrinter (prev_recorder);
+						return;
+					}
 				}
 
 				var expr_printer = new SessionReportPrinter ();
@@ -2570,6 +2572,11 @@ namespace Mono.CSharp
 			if (Initializer != null) {
 				Initializer = Initializer.Resolve (rc);
 
+				// var x = [dict:literal] is always a Dictionary
+				var dl = Initializer as DictionaryLiteral;
+				if (dl != null)
+					Initializer = dl.ResolveAsDictionary (rc);
+				
 				if (var_expr != null && Initializer != null && var_expr.InferType (rc, Initializer)) {
 					type = var_expr.Type;
 				}
@@ -12526,11 +12533,11 @@ namespace Mono.CSharp
 		}
 	}
 	
-	public class DictionaryLiteral : Expression {
+	public class DictionaryLiteral : Constant {
 		List<KeyPair> KeyPairs;
 		protected TypeSpec key_type, value_type;
 		
-		public DictionaryLiteral (List<KeyPair> keyPairs, Location loc)
+		public DictionaryLiteral (List<KeyPair> keyPairs, Location loc) : base (loc)
 		{
 			KeyPairs = keyPairs;
 			this.loc = loc;
@@ -12548,9 +12555,11 @@ namespace Mono.CSharp
 		Expression ResolveElement (ResolveContext rc, TypeInferenceContext tic, Expression e)
 		{
 			e = e.Resolve (rc);
-			if (e != null)
+			if (e != null){
+				if (e is DictionaryLiteral)
+					e = ((DictionaryLiteral) e).ResolveAsDictionary (rc);
 				tic.AddCommonTypeBound (e.Type);
-
+			}
 			return e;
 		}
 		
@@ -12604,6 +12613,16 @@ namespace Mono.CSharp
 				rc.Report.Error (-1, loc, "It is not possible to infer the type of the dictionary values");
 				return null;
 			}
+			type = InternalType.DictionaryLiteralType;
+			eclass = ExprClass.Value;
+			return this;
+		}
+
+		//
+		// Called when we determine that we want to use this as the default Dictionary<K,V>
+		//
+		public Expression ResolveAsDictionary (ResolveContext rc)
+		{
 			if (rc.Module.PredefinedTypes.Dictionary.Define ()){
 				var dict_type = new TypeExpression (rc.Module.PredefinedTypes.Dictionary.TypeSpec.MakeGenericType (rc, new [] { key_type, value_type }), loc);
 				var init = new List<Expression> ();
@@ -12620,19 +12639,57 @@ namespace Mono.CSharp
 				args.Add (new Argument (new IntConstant (rc.BuiltinTypes, init.Count, loc)));
 				return new NewInitialize (dict_type, args, new CollectionOrObjectInitializers (init, loc), loc).Resolve (rc);
 			}
-			return this;
+			return null;
 		}
-
+		
 		public override Expression CreateExpressionTree (ResolveContext ec)
 		{
 			// Not needed
-			throw new NotImplementedException ();
+			throw new Exception ("not reached");
 		}
 
 		public override void Emit (EmitContext ec)
 		{
 			// Not Needed
+			throw new Exception ("not reached");
 		}
+
+		//
+		// Constant methods
+		//
+
+		public override Constant ConvertImplicitly (TypeSpec type)
+		{
+			if (this.type == type)
+				return this;
+		
+			Console.WriteLine ("Attemping to convert to {0}", type);
+			return base.ConvertImplicitly (type);
+		}
+		
+		public override bool IsLiteral => true;
+		
+		public override string GetValueAsLiteral ()
+		{
+			throw new NotSupportedException ();
+		}
+		
+		public override long GetValueAsLong ()
+		{
+			throw new NotSupportedException ();
+		}
+		
+		public override bool IsDefaultValue => false;
+		public override bool IsNegative => false;
+		
+		public override object GetValue () => throw new NotImplementedException ();
+		
+		public override Constant ConvertExplicitly (bool in_checked_context, TypeSpec target_type)
+		{
+			Console.WriteLine ("Request to convert to {0}", target_type);
+			return null;
+		}
+				
 	}
 
 	public class InterpolatedString : Expression

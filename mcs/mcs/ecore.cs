@@ -1,4 +1,4 @@
-//
+﻿//
 // ecore.cs: Core of the Expression representation for the intermediate tree.
 //
 // Author:
@@ -7763,7 +7763,9 @@ namespace Mono.CSharp {
 				type = InternalType.ErrorType;
 				return false;
 			}
-
+			if (right_side.Type == InternalType.DictionaryLiteralType) {
+				Console.WriteLine ("We have a problem");
+			}
 			eclass = ExprClass.Variable;
 			return true;
 		}

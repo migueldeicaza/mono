@@ -193,12 +193,16 @@ namespace Mono.CSharp
 		public void Resolve (ResolveContext ec)
 		{
 			// Verify that the argument is readable
-			if (ArgType != AType.Out)
+			if (ArgType != AType.Out) {
 				Expr = Expr.Resolve (ec);
+				if (Expr is DictionaryLiteral) {
+					Expr = ((DictionaryLiteral)Expr).ResolveAsDictionary (ec);
+				}
+			}
 
 			// Verify that the argument is writeable
-			if (Expr != null && IsByRef)
-				Expr = Expr.ResolveLValue (ec, EmptyExpression.OutAccess);
+					if (Expr != null && IsByRef)
+						Expr = Expr.ResolveLValue (ec, EmptyExpression.OutAccess);
 
 			if (Expr == null)
 				Expr = ErrorExpression.Instance;
