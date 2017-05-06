@@ -1049,7 +1049,7 @@ fi
 
 AC_ARG_ENABLE(minimal, [  --enable-minimal=LIST      drop support for LIST subsystems.
      LIST is a comma-separated list from: aot, profiler, decimal, pinvoke, debug, appdomains, verifier, 
-     reflection_emit, reflection_emit_save, large_code, logging, com, ssa, generics, attach, jit, simd, soft_debug, perfcounters, normalization, assembly_remapping, shared_perfcounters, remoting,
+     reflection_emit, reflection_emit_save, large_code, logging, com, ssa, generics, attach, jit, simd, soft_debug, perfcounters, normalization, desktop_loader, shared_perfcounters, remoting,
 	 security, lldb, mdb, sgen_remset, sgen_marksweep_par, sgen_marksweep_fixed, sgen_marksweep_fixed_par, sgen_copying.],
 [
 	for feature in `echo "$enable_minimal" | sed -e "s/,/ /g"`; do
@@ -1170,9 +1170,10 @@ if test "x$mono_feature_disable_normalization" = "xyes"; then
 	AC_MSG_NOTICE([Disabled String normalization support.])
 fi
 
-if test "x$mono_feature_disable_assembly_remapping" = "xyes"; then
-	AC_DEFINE(DISABLE_ASSEMBLY_REMAPPING, 1, [Disable assembly remapping.])
-	AC_MSG_NOTICE([Disabled Assembly remapping.])
+#TODO: remove assembly_remapping feature name once everyone is using desktop_loader
+if test "x$mono_feature_disable_assembly_remapping" = "xyes" || "x$mono_feature_disable_desktop_loader" = "xyes"; then
+	AC_DEFINE(DISABLE_DESKTOP_LOADER, 1, [Disable desktop assembly loader semantics.])
+	AC_MSG_NOTICE([Disabled desktop assembly loader semantics.])
 fi
 
 if test "x$mono_feature_disable_shared_perfcounters" = "xyes"; then
@@ -1274,7 +1275,7 @@ dnl
 dnl Boehm GC configuration
 dnl
 
-AC_ARG_WITH(libgc,   [  --with-gc=included,none  Controls the Boehm GC config, default=included],[libgc=$with_gc],[libgc=included])
+AC_ARG_WITH(libgc,   [  --with-libgc=included,none  Controls the Boehm GC config, default=included],[libgc=$with_gc],[libgc=included])
 
 AC_ARG_ENABLE(boehm, [  --disable-boehm            Disable the Boehm GC.], support_boehm=$enableval,support_boehm=${support_boehm:-yes})
 AM_CONDITIONAL(SUPPORT_BOEHM, test x$support_boehm = xyes)
@@ -1322,7 +1323,7 @@ if test "x$support_boehm" = "xyes"; then
 			;;
 
 		xsgen)
-			AC_MSG_WARN("Use --with-sgen instead, --with-gc= controls Boehm configuration")
+			AC_MSG_WARN("Use --with-sgen instead, --with-libgc= controls Boehm configuration")
 			;;
 
 		xnone)
@@ -1332,7 +1333,7 @@ if test "x$support_boehm" = "xyes"; then
 			gc_msg="none"
 			;;
 		*)
-			AC_MSG_ERROR([Invalid argument to --with-gc.])
+			AC_MSG_ERROR([Invalid argument to --with-libgc.])
 			;;
 	esac
 
@@ -3023,7 +3024,7 @@ if test "x$enable_llvm" = "xyes"; then
 	  LLVM_CXXFLAGS="$LLVM_CXXFLAGS -DLLVM_API_VERSION=$llvm_api_version"
    fi   
 
-   AC_DEFINE_UNQUOTED(LLVM_VERSION, "$llvm_version", [Full version of LLVM libraties])
+   AC_DEFINE_UNQUOTED(LLVM_VERSION, "$llvm_version", [Full version of LLVM libraries])
 
    AC_SUBST(LLVM_CFLAGS)
    AC_SUBST(LLVM_CXXFLAGS)
@@ -4227,7 +4228,7 @@ AC_SUBST(mono_build_root)
 mono_runtime=mono/mini/mono
 AC_SUBST(mono_runtime)
 
-CSC_LOCATION=`cd $srcdir && pwd`/external/roslyn-binaries/Microsoft.Net.Compilers/Microsoft.Net.Compilers.2.0.0/tools/csc.exe
+CSC_LOCATION=`cd $srcdir && pwd`/external/roslyn-binaries/Microsoft.Net.Compilers/Microsoft.Net.Compilers.2.1.0/tools/csc.exe
 
 if test $csc_compiler = mcs; then
   CSC=$mcs_topdir/class/lib/build/mcs.exe
@@ -4439,7 +4440,6 @@ mono/arch/mips/Makefile
 mono/sgen/Makefile
 mono/tests/Makefile
 mono/tests/tests-config
-mono/tests/assemblyresolve/Makefile
 mono/tests/gc-descriptors/Makefile
 mono/tests/testing_gac/Makefile
 mono/unit-tests/Makefile

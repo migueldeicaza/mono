@@ -122,7 +122,7 @@
 #endif
 
 /* Version number of the AOT file format */
-#define MONO_AOT_FILE_VERSION 139
+#define MONO_AOT_FILE_VERSION 140
 
 //TODO: This is x86/amd64 specific.
 #define mono_simd_shuffle_mask(a,b,c,d) ((a) | ((b) << 2) | ((c) << 4) | ((d) << 6))
@@ -1202,6 +1202,12 @@ typedef struct {
 	 * the catch block that caught the ThreadAbortException).
 	 */
 	gpointer abort_exc_stack_threshold;
+
+
+	/*
+	 * List of methods being JIT'd in the current thread.
+	 */
+	int active_jit_methods;
 } MonoJitTlsData;
 
 /*
@@ -2257,6 +2263,8 @@ enum {
 	  */
 	 guint8 *uw_info;
 	 guint32 uw_info_len;
+	 /* Whenever uw_info is owned by this structure */
+	 gboolean owns_uw_info;
 } MonoTrampInfo;
 
 typedef void (*MonoInstFunc) (MonoInst *tree, gpointer data);
@@ -3053,6 +3061,7 @@ MonoGenericContext* mini_class_get_context (MonoClass *klass);
 
 MonoType* mini_get_underlying_type (MonoType *type) MONO_LLVM_INTERNAL;
 MonoType* mini_type_get_underlying_type (MonoType *type);
+MonoClass* mini_get_class (MonoMethod *method, guint32 token, MonoGenericContext *context);
 MonoMethod* mini_get_shared_method (MonoMethod *method);
 MonoMethod* mini_get_shared_method_to_register (MonoMethod *method);
 MonoMethod* mini_get_shared_method_full (MonoMethod *method, gboolean all_vt, gboolean is_gsharedvt);

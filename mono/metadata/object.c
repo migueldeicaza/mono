@@ -1968,7 +1968,6 @@ mono_class_create_runtime_vtable (MonoDomain *domain, MonoClass *klass, MonoErro
 			/*g_print ("bitmap 0x%x for %s.%s (size: %d)\n", bitmap [0], klass->name_space, klass->name, class_size);*/
 			statics_gc_descr = mono_gc_make_descr_from_bitmap (bitmap, max_set + 1);
 			vt->vtable [klass->vtable_size] = mono_gc_alloc_fixed (class_size, statics_gc_descr, MONO_ROOT_SOURCE_STATIC, "managed static variables");
-			mono_domain_add_class_static_data (domain, klass, vt->vtable [klass->vtable_size], NULL);
 			if (bitmap != default_bitmap)
 				g_free (bitmap);
 		} else {
@@ -4487,16 +4486,41 @@ mono_runtime_unhandled_exception_policy_get (void) {
  * a warning to the console 
  */
 void
-mono_unhandled_exception (MonoObject *exc)
+mono_unhandled_exception (MonoObject *exc_raw)
+{
+	MonoError error;
+	HANDLE_FUNCTION_ENTER ();
+	MONO_HANDLE_DCL (MonoObject, exc);
+	error_init (&error);
+	mono_unhandled_exception_checked (exc, &error);
+	mono_error_assert_ok (&error);
+	HANDLE_FUNCTION_RETURN ();
+}
+
+/**
+ * mono_unhandled_exception:
+ * @exc: exception thrown
+ *
+ * This is a VM internal routine.
+ *
+ * We call this function when we detect an unhandled exception
+ * in the default domain.
+ *
+ * It invokes the * UnhandledException event in AppDomain or prints
+ * a warning to the console 
+ */
+void
+mono_unhandled_exception_checked (MonoObjectHandle exc, MonoError *error)
 {
 	MONO_REQ_GC_UNSAFE_MODE;
 
-	MonoError error;
+	error_init (error);
 	MonoClassField *field;
 	MonoDomain *current_domain, *root_domain;
-	MonoObject *current_appdomain_delegate = NULL, *root_appdomain_delegate = NULL;
+	MonoObjectHandle current_appdomain_delegate = MONO_HANDLE_NEW (MonoObject, NULL);
 
-	if (mono_class_has_parent (exc->vtable->klass, mono_defaults.threadabortexception_class))
+	MonoClass *klass = mono_handle_class (exc);
+	if (mono_class_has_parent (klass, mono_defaults.threadabortexception_class))
 		return;
 
 	field = mono_class_get_field_from_name (mono_defaults.appdomain_class, "UnhandledException");
@@ -4505,22 +4529,22 @@ mono_unhandled_exception (MonoObject *exc)
 	current_domain = mono_domain_get ();
 	root_domain = mono_get_root_domain ();
 
-	root_appdomain_delegate = mono_field_get_value_object_checked (root_domain, field, (MonoObject*) root_domain->domain, &error);
-	mono_error_assert_ok (&error);
+	MonoObjectHandle root_appdomain_delegate = MONO_HANDLE_NEW (MonoObject, mono_field_get_value_object_checked (root_domain, field, (MonoObject*) root_domain->domain, error)); /* FIXME use handles for mono_field_get_value_object_checked */
+	return_if_nok (error);
 	if (current_domain != root_domain) {
-		current_appdomain_delegate = mono_field_get_value_object_checked (current_domain, field, (MonoObject*) current_domain->domain, &error);
-		mono_error_assert_ok (&error);
+		MONO_HANDLE_ASSIGN (current_appdomain_delegate, MONO_HANDLE_NEW (MonoObject, mono_field_get_value_object_checked (current_domain, field, (MonoObject*) current_domain->domain, error))); /* FIXME use handles for mono_field_get_value_object_checked */
+		return_if_nok (error);
 	}
 
-	if (!current_appdomain_delegate && !root_appdomain_delegate) {
-		mono_print_unhandled_exception (exc);
+	if (MONO_HANDLE_IS_NULL (current_appdomain_delegate) && MONO_HANDLE_IS_NULL (root_appdomain_delegate)) {
+		mono_print_unhandled_exception (MONO_HANDLE_RAW (exc)); /* FIXME use handles for mono_print_unhandled_exception */
 	} else {
 		/* unhandled exception callbacks must not be aborted */
 		mono_threads_begin_abort_protected_block ();
-		if (root_appdomain_delegate)
-			call_unhandled_exception_delegate (root_domain, root_appdomain_delegate, exc);
-		if (current_appdomain_delegate)
-			call_unhandled_exception_delegate (current_domain, current_appdomain_delegate, exc);
+		if (!MONO_HANDLE_IS_NULL (root_appdomain_delegate))
+			call_unhandled_exception_delegate (root_domain, MONO_HANDLE_RAW (root_appdomain_delegate), MONO_HANDLE_RAW (exc)); /* FIXME use handles in call_unhandled_exception_delegate */
+		if (!MONO_HANDLE_IS_NULL (current_appdomain_delegate))
+			call_unhandled_exception_delegate (current_domain, MONO_HANDLE_RAW (current_appdomain_delegate), MONO_HANDLE_RAW (exc));
 		mono_threads_end_abort_protected_block ();
 	}
 
@@ -6170,24 +6194,25 @@ mono_string_new_checked (MonoDomain *domain, const char *text, MonoError *error)
 {
 	MONO_REQ_GC_UNSAFE_MODE;
 
-    GError *eg_error = NULL;
-    MonoString *o = NULL;
-    guint16 *ut;
-    glong items_written;
-    int l;
+	GError *eg_error = NULL;
+	MonoString *o = NULL;
+	guint16 *ut;
+	glong items_written;
+	int l;
 
-    error_init (error);
-
-    l = strlen (text);
-   
-    ut = g_utf8_to_utf16 (text, l, NULL, &items_written, &eg_error);
-
-    if (!eg_error)
-	    o = mono_string_new_utf16_checked (domain, ut, items_written, error);
-    else
-        g_error_free (eg_error);
-
-    g_free (ut);
+	error_init (error);
+	
+	l = strlen (text);
+	
+	ut = g_utf8_to_utf16 (text, l, NULL, &items_written, &eg_error);
+	
+	if (!eg_error) {
+		o = mono_string_new_utf16_checked (domain, ut, items_written, error);
+	} else {
+		mono_error_set_execution_engine (error, "String conversion error: %s", eg_error->message);
+	}
+	
+	g_free (ut);
     
 /*FIXME g_utf8_get_char, g_utf8_next_char and g_utf8_validate are not part of eglib.*/
 #if 0

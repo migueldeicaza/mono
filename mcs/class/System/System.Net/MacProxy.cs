@@ -469,7 +469,18 @@ namespace Mono.Net
 		{
 			return new CFDictionary (CFDictionaryCreate (IntPtr.Zero, new IntPtr[] { key }, new IntPtr [] { obj }, (IntPtr)1, KeyCallbacks, ValueCallbacks), true);
 		}
-		
+
+		public static CFDictionary FromKeysAndObjects (IList<Tuple<IntPtr,IntPtr>> items)
+		{
+			var keys = new IntPtr [items.Count];
+			var values = new IntPtr [items.Count];
+			for (int i = 0; i < items.Count; i++) {
+				keys [i] = items [i].Item1;
+				values [i] = items [i].Item2;
+			}
+			return new CFDictionary (CFDictionaryCreate (IntPtr.Zero, keys, values, (IntPtr)items.Count, KeyCallbacks, ValueCallbacks), true);
+		}
+
 		[DllImport (CoreFoundationLibrary)]
 		extern static IntPtr CFDictionaryCreate (IntPtr allocator, IntPtr[] keys, IntPtr[] vals, IntPtr len, IntPtr keyCallbacks, IntPtr valCallbacks);
 
@@ -513,8 +524,20 @@ namespace Mono.Net
 			CFDictionarySetValue (Handle, key, val);
 		}
 
+		public static CFMutableDictionary Create ()
+		{
+			var handle = CFDictionaryCreateMutable (IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+			if (handle == IntPtr.Zero)
+				throw new InvalidOperationException ();
+			return new CFMutableDictionary (handle, true);
+		}
+
 		[DllImport (CoreFoundationLibrary)]
 		extern static void CFDictionarySetValue (IntPtr handle, IntPtr key, IntPtr val);
+
+		[DllImport (CoreFoundationLibrary)]
+		extern static IntPtr CFDictionaryCreateMutable (IntPtr allocator, IntPtr capacity, IntPtr keyCallback, IntPtr valueCallbacks);
+
 	}
 
 	internal class CFUrl : CFObject
@@ -1316,6 +1339,56 @@ namespace Mono.Net
 		{
 			return CFBooleanGetValue (boolean);
 		}
+	}
+
+	internal class CFDate : INativeObject, IDisposable {
+		IntPtr handle;
+
+		internal CFDate (IntPtr handle, bool owns)
+		{
+			this.handle = handle;
+			if (!owns)
+				CFObject.CFRetain (handle);
+		}
+
+		~CFDate ()
+		{
+			Dispose (false);
+		}
+
+		[DllImport (CFObject.CoreFoundationLibrary)]
+		extern static IntPtr CFDateCreate (IntPtr allocator, /* CFAbsoluteTime */ double at);
+
+		public static CFDate Create (DateTime date)
+		{
+			var referenceTime = new DateTime (2001, 1, 1);
+			var difference = (date - referenceTime).TotalSeconds;
+			var handle = CFDateCreate (IntPtr.Zero, difference);
+			if (handle == IntPtr.Zero)
+				throw new NotSupportedException ();
+			return new CFDate (handle, true);
+		}
+
+		public IntPtr Handle {
+			get {
+				return handle;
+			}
+		}
+
+		public void Dispose ()
+		{
+			Dispose (true);
+			GC.SuppressFinalize (this);
+		}
+
+		protected virtual void Dispose (bool disposing)
+		{
+			if (handle != IntPtr.Zero) {
+				CFObject.CFRelease (handle);
+				handle = IntPtr.Zero;
+			}
+		}
+
 	}
 
 }

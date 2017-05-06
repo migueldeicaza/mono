@@ -1186,10 +1186,17 @@ typedef struct {
 	MonoArray *global_fields;
 	gboolean is_main;
 	MonoArray *resources;
+	GHashTable *unparented_classes;
 } MonoReflectionModuleBuilder;
 
 /* Safely acess System.Reflection.Emit.ModuleBuidler from native code */
 TYPED_HANDLE_DECL (MonoReflectionModuleBuilder);
+
+typedef enum {
+	MonoTypeBuilderNew = 0,
+	MonoTypeBuilderEntered = 1,
+	MonoTypeBuilderFinished = 2
+} MonoTypeBuilderState;
 
 typedef struct {
 	MonoReflectionType type;
@@ -1216,6 +1223,7 @@ typedef struct {
 	MonoArray *generic_params;
 	MonoArray *permissions;
 	MonoReflectionType *created;
+	gint32 state;
 } MonoReflectionTypeBuilder;
 
 /* Safely access System.Reflection.Emit.TypeBuilder from native code */
@@ -1475,9 +1483,6 @@ mono_reflection_call_is_assignable_to (MonoClass *klass, MonoClass *oklass, Mono
 void
 ves_icall_System_Reflection_CustomAttributeData_ResolveArgumentsInternal (MonoReflectionMethod *method, MonoReflectionAssembly *assembly, gpointer data, guint32 data_length, MonoArray **ctor_args, MonoArray ** named_args);
 
-MonoType*
-mono_reflection_type_get_handle (MonoReflectionType *ref, MonoError *error);
-
 gboolean
 mono_image_build_metadata (MonoReflectionModuleBuilder *module, MonoError *error);
 
@@ -1636,6 +1641,9 @@ MonoRuntimeUnhandledExceptionPolicy
 mono_runtime_unhandled_exception_policy_get (void);
 void
 mono_runtime_unhandled_exception_policy_set (MonoRuntimeUnhandledExceptionPolicy policy);
+
+void
+mono_unhandled_exception_checked (MonoObjectHandle exc, MonoError *error);
 
 MonoVTable *
 mono_class_try_get_vtable (MonoDomain *domain, MonoClass *klass);

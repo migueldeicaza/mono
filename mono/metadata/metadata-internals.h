@@ -305,7 +305,7 @@ struct _MonoImage {
 	MonoConcurrentHashTable *field_cache; /*protected by the image lock*/
 
 	/* indexed by typespec tokens. */
-	GHashTable *typespec_cache; /* protected by the image lock */
+	MonoConcurrentHashTable *typespec_cache; /* protected by the image lock */
 	/* indexed by token */
 	GHashTable *memberref_signatures;
 	GHashTable *helper_signatures;
@@ -430,7 +430,8 @@ typedef struct {
 	MonoImage **images;
 
 	// Generic-specific caches
-	GHashTable *gclass_cache, *ginst_cache, *gmethod_cache, *gsignature_cache;
+	GHashTable *ginst_cache, *gmethod_cache, *gsignature_cache;
+	MonoConcurrentHashTable *gclass_cache;
 
 	MonoWrapperCaches wrapper_caches;
 
@@ -942,6 +943,12 @@ mono_assembly_is_problematic_version (const char *name, guint16 major, guint16 m
 
 void
 mono_ginst_get_desc (GString *str, MonoGenericInst *ginst);
+
+void
+mono_loader_set_strict_strong_names (gboolean enabled);
+
+gboolean
+mono_loader_get_strict_strong_names (void);
 
 #endif /* __MONO_METADATA_INTERNALS_H__ */
 

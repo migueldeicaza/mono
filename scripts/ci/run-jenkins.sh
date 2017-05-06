@@ -19,8 +19,8 @@ if [[ ${label} == 'w64' ]]; then PLATFORM=x64; EXTRA_CONF_FLAGS="${EXTRA_CONF_FL
 
 if [[ ${CI_TAGS} == *'coop-gc'* ]]; then EXTRA_CONF_FLAGS="${EXTRA_CONF_FLAGS} --with-cooperative-gc=yes"; fi
 
-if [[ ${CI_TAGS} == *'checked-coop'* ]]; then EXTRA_CONF_FLAGS="${EXTRA_CONF_FLAGS} --enable-checked-build=gc,thread"; export MONO_CHECK_MODE=gc,thread; fi
-if [[ ${CI_TAGS} == *'checked-all'* ]]; then EXTRA_CONF_FLAGS="${EXTRA_CONF_FLAGS} --enable-checked-build=all"; export MONO_CHECK_MODE=all; fi
+if [[ ${CI_TAGS} == *'checked-coop'* ]]; then EXTRA_CONF_FLAGS="${EXTRA_CONF_FLAGS} --enable-checked-build=gc,thread"; fi
+if [[ ${CI_TAGS} == *'checked-all'* ]]; then EXTRA_CONF_FLAGS="${EXTRA_CONF_FLAGS} --enable-checked-build=all"; fi
 
 if [[ ${CI_TAGS} == *'mcs-compiler'* ]]; then EXTRA_CONF_FLAGS="${EXTRA_CONF_FLAGS} --with-csc=mcs"; fi
 
@@ -42,6 +42,10 @@ elif [[ ${label} != w* ]] && [[ ${label} != 'debian-8-ppc64el' ]] && [[ ${label}
     if [[ ${label} == 'ubuntu-1404-amd64' ]]; then
         # only enable build of the additional profiles on one architecture to save time
         EXTRA_CONF_FLAGS="${EXTRA_CONF_FLAGS} --with-runtime_preset=all"
+        # when building profiles like monotouch/monodroid which don't build System.Drawing.dll in the Mono repo we need
+        # to build the facades against _something_ to satisfy the typeforwards. In CI we can cheat a little and pass
+        # them System.Drawing.dll from the 'build' profile since we don't test those profiles here (we just ensure they compile).
+        export EXTERNAL_FACADE_DRAWING_REFERENCE=${MONO_REPO_ROOT}/mcs/class/lib/build/System.Drawing.dll
     fi
 fi
 
@@ -79,12 +83,18 @@ if [[ ${label} == 'debian-8-ppc64el' ]]; then make_parallelism=-j1; fi
 
 ${TESTCMD} --label=make --timeout=300m --fatal make ${make_parallelism} -w V=1
 
+if [[ ${CI_TAGS} == *'checked-coop'* ]]; then export MONO_CHECK_MODE=gc,thread; fi
+if [[ ${CI_TAGS} == *'checked-all'* ]]; then export MONO_CHECK_MODE=all; fi
+
 if [[ ${CI_TAGS} == *'acceptance-tests'* ]];
     then
 	$(dirname "${BASH_SOURCE[0]}")/run-test-acceptance-tests.sh
 elif [[ ${CI_TAGS} == *'profiler-stress-tests'* ]];
     then
-	$(dirname "${BASH_SOURCE[0]}")/run-test-profiler-stress-tests.sh
+    $(dirname "${BASH_SOURCE[0]}")/run-test-profiler-stress-tests.sh
+elif [[ ${CI_TAGS} == *'stress-tests'* ]];
+    then
+    $(dirname "${BASH_SOURCE[0]}")/run-test-stress-tests.sh
 elif [[ ${CI_TAGS} == *'interpreter'* ]];
     then
     $(dirname "${BASH_SOURCE[0]}")/run-test-interpreter.sh
