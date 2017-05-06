@@ -12618,6 +12618,22 @@ namespace Mono.CSharp
 			return this;
 		}
 
+		// Returns the collection initializers as parameters
+		public CollectionOrObjectInitializers GetCollectionInitializers ()
+		{
+			var init = new List<Expression> ();
+
+			foreach (var kp in KeyPairs){
+				var init_args = new List<Expression> (2);
+				init_args.Add (kp.Key);
+				init_args.Add (kp.Value);
+					
+				init.Add (new CollectionElementInitializer (init_args, loc));
+			}
+
+			return new CollectionOrObjectInitializers (init, loc);
+		}
+		
 		//
 		// Called when we determine that we want to use this as the default Dictionary<K,V>
 		//
@@ -12625,19 +12641,20 @@ namespace Mono.CSharp
 		{
 			if (rc.Module.PredefinedTypes.Dictionary.Define ()){
 				var dict_type = new TypeExpression (rc.Module.PredefinedTypes.Dictionary.TypeSpec.MakeGenericType (rc, new [] { key_type, value_type }), loc);
-				var init = new List<Expression> ();
-
-				foreach (var kp in KeyPairs){
-					var init_args = new List<Expression> (2);
-					init_args.Add (kp.Key);
-					init_args.Add (kp.Value);
-					
-					init.Add (new CollectionElementInitializer (init_args, loc));
-				}
-
 				var args = new Arguments (1);
-				args.Add (new Argument (new IntConstant (rc.BuiltinTypes, init.Count, loc)));
-				return new NewInitialize (dict_type, args, new CollectionOrObjectInitializers (init, loc), loc).Resolve (rc);
+				var collection_init = GetCollectionInitializers ();
+				args.Add (new Argument (new IntConstant (rc.BuiltinTypes, collection_init.Initializers.Count, loc)));
+
+				// TODO:
+				// Perhaps we should create a subclass of NewInitialize called NewInitializeDictionaryLiteral
+				// which holds a pointer to this object and which we can probe for in Convert and implicit
+				// conversions, and we perform the implicit conversion there.
+				//
+				// This would allow the scenario where overload resolution performs a call to Resolve on the parameter
+				// and we erase the fact that this was a dictionary literal, which means that by the time we reach
+				// overload resolution we are too late.
+				//
+				return new NewInitialize (dict_type, args, collection_init, loc).Resolve (rc);
 			}
 			return null;
 		}

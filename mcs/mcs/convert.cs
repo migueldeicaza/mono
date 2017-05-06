@@ -741,6 +741,7 @@ namespace Mono.CSharp {
 			// Boxing conversions
 			// Implicit constant expression conversions
 			// Implicit conversions involving type parameters
+			// Implicit conversions involving dictionary literals
 			//
 
 			TypeSpec expr_type = expr.Type;
@@ -1374,10 +1375,11 @@ namespace Mono.CSharp {
 			Expression e;
 
 			if (expr_type == InternalType.DictionaryLiteralType){
-
 				// First we need to probe that the type supports the signature and then create the variable
 				// and then load the contents into it.
-				var r = new CollectionElementInitializer (new List<Expression> () { expr }, expr.Location);
+				Console.WriteLine ("TODO: Validate that {0} is a Dictionary-shaped object", target_type);
+
+				var r = new NewInitialize (new TypeExpression (target_type, expr.Location), new Arguments (0), (expr as DictionaryLiteral).GetCollectionInitializers (), expr.Location);
 				Console.WriteLine ("Attempting to convert an InternalDictionary into {0} => {1}", target_type, r);
 				var k = r.Resolve (ec);
 				return k;
