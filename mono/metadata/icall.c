@@ -2733,6 +2733,7 @@ ves_icall_RuntimeType_GetInterfaces (MonoReflectionTypeHandle ref_type, MonoErro
 	len = g_hash_table_size (iface_hash);
 	if (len == 0) {
 		g_hash_table_destroy (iface_hash);
+		iface_hash = NULL;
 		if (!domain->empty_types) {
 			domain->empty_types = mono_array_new_cached (domain, mono_defaults.runtimetype_class, 0, error);
 			goto_if_nok (error, fail);
