@@ -29,7 +29,7 @@ fi
   echo "or get the source tarball at ftp://ftp.gnu.org/pub/gnu/"
   DIE=1
 }
-
+echo here: $LIBTOOLIZE
 if [ -z "$LIBTOOLIZE" ]; then
   LIBTOOLIZE=`which glibtoolize 2>/dev/null`
   if [ ! -x "$LIBTOOLIZE" ]; then
@@ -37,8 +37,9 @@ if [ -z "$LIBTOOLIZE" ]; then
   fi
 fi
 
+echo here: $LIBTOOLIZE
 (grep "^AM_PROG_LIBTOOL" $srcdir/configure.ac >/dev/null) && {
-  ($LIBTOOLIZE --version) < /dev/null > /dev/null 2>&1 || {
+  ($LIBTOOLIZE --version)  < /dev/null > /dev/null 2>&1 || {
     echo
     echo "**Error**: You must have \`libtoolize' installed to compile Mono."
     echo "Get ftp://ftp.gnu.org/gnu/libtool/libtool-1.2.tar.gz"

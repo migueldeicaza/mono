@@ -82,6 +82,7 @@
 #include "debugger-agent.h"
 #include "seq-points.h"
 #include "aot-compiler.h"
+#include "mini-tiered.h"
 #include "mini-llvm.h"
 #include "mini-runtime.h"
 #include "llvmonly-runtime.h"
@@ -6270,6 +6271,9 @@ mono_method_to_ir (MonoCompile *cfg, MonoMethod *method, MonoBasicBlock *start_b
 	init_localsbb2 = init_localsbb;
 	cfg->cbb = init_localsbb;
 
+	if (cfg->method == method)
+		mini_tiered_emit_entry (cfg);
+
 	if (cfg->gsharedvt && cfg->method == method) {
 		MonoGSharedVtMethodInfo *info;
 		MonoInst *var, *locals_var;
@@ -11115,7 +11119,7 @@ mono_ldptr:
 
 	cfg->cbb = init_localsbb;
 	mini_profiler_emit_enter (cfg);
-
+	
 	if (seq_points) {
 		MonoBasicBlock *bb;
 
