@@ -28,7 +28,7 @@
 #endif
 
 #include <mono/utils/memcheck.h>
-
+#include "mini-tiered.h"
 #include <mono/metadata/assembly.h>
 #include <mono/metadata/assembly-internals.h>
 #include <mono/metadata/loader.h>
@@ -4401,6 +4401,7 @@ register_icalls (void)
 	g_assert (mono_get_lmf_addr == mono_tls_get_lmf_addr);
 	register_icall (mono_jit_set_domain, mono_icall_sig_void_ptr, TRUE);
 	register_icall (mono_domain_get, mono_icall_sig_ptr, TRUE);
+	register_icall (mini_tiered_rejit, mono_icall_sig_void_ptr_ptr, TRUE);
 
 	register_icall (mono_llvm_throw_exception, mono_icall_sig_void_object, TRUE);
 	register_icall (mono_llvm_rethrow_exception, mono_icall_sig_void_object, TRUE);
@@ -4721,6 +4722,8 @@ mini_cleanup (MonoDomain *domain)
 void
 mini_cleanup (MonoDomain *domain)
 {
+	if (getenv ("MONO_DUMP_TIERED") != NULL)
+		mini_tiered_dump();
 	if (mono_profiler_sampling_enabled ())
 		mono_runtime_shutdown_stat_profiler ();
 

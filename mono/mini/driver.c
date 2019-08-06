@@ -2781,7 +2781,6 @@ mono_jit_init_version (const char *domain_name, const char *runtime_version)
 	return mini_init (domain_name, runtime_version);
 }
 
-void mini_tiered_dump ();
 /**
  * mono_jit_cleanup:
  */

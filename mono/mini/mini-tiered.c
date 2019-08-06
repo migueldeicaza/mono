@@ -13,30 +13,61 @@
 typedef struct {
 	int counter;
 	MonoMethod *method;
-} CounterSlot;
-	
+	void *tiered_code;
+	int rejit_requested;
+} TieredStatusSlot;
+
+static mono_mutex_t tiered_queue_lock;
 // Counters for the number of invocations
-static CounterSlot *tiered_counters;
+static TieredStatusSlot *tiered_counters;
 // Number of counters to create
 static int ntiered = 4096;
-static CounterSlot *next_tiered;
-static int n;
+static TieredStatusSlot *next_tiered;
+static GSList *rejit_queue;
+
+//
+// FIXME: seems like I dont need the method now, since I have the slot with the data.
+void
+mini_tiered_rejit (MonoMethod *method, void *_slot)
+{
+	TieredStatusSlot *slot = _slot;
+	mono_os_mutex_lock (&tiered_queue_lock);
+	if (!slot->rejit_requested){
+		slot->rejit_requested = 1;
+		rejit_queue = g_slist_append (rejit_queue, slot);
+	}
+	mono_os_mutex_unlock (&tiered_queue_lock);
+	
+	printf ("Rejitting %s at %p\n", mono_method_full_name (method, TRUE), slot->tiered_code);
+}
+
+static void
+mini_tiered_init ()
+{
+	tiered_counters = g_new0 (TieredStatusSlot, ntiered);
+	next_tiered = tiered_counters;
+
+	mono_os_mutex_init (&tiered_queue_lock);
+}
 
 void
 mini_tiered_emit_entry (MonoCompile *cfg)
 {
-	MonoInst *one_ins, *load_ins, *ins, *reload;
-	int countreg;
+	MonoInst *one_ins, *load_ins, *ins;
 	MonoBasicBlock *resume_bb;
+
+	// We know that LLVM wont work for this method, do not instrument
+	if (cfg->disable_llvm)
+		return;
 
 	NEW_BBLOCK (cfg, resume_bb);
 
-	if (tiered_counters == NULL){
-		tiered_counters = g_new0 (CounterSlot, ntiered);
-		next_tiered = tiered_counters;
-	}
+	if (tiered_counters == NULL)
+		mini_tiered_init ();
+
+	cfg->tier0code = &next_tiered->tiered_code;
 	next_tiered->method = cfg->method;
-	printf ("Lock for %s is at %p %d\n", cfg->method->name, next_tiered, n);
+	//printf ("Count for %s is at %p\n", mono_method_full_name (cfg->method, TRUE), next_tiered);
 
 	EMIT_NEW_PCONST (cfg, load_ins, next_tiered);
 	EMIT_NEW_ICONST (cfg, one_ins, 1);
@@ -55,9 +86,10 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 		MonoInst *iargs [2];
 		
 		EMIT_NEW_METHODCONST (cfg, iargs [0], cfg->method);
-		EMIT_NEW_PCONST (cfg, iargs [1], NULL);
+		EMIT_NEW_PCONST (cfg, iargs [1], next_tiered);
 		
-		mono_emit_jit_icall (cfg, mono_trace_enter_method, iargs);
+		mono_emit_jit_icall (cfg, mini_tiered_rejit, iargs);
+
 	}
 	MONO_START_BB (cfg, resume_bb);
 
@@ -67,12 +99,11 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 void
 mini_tiered_dump ()
 {
-	CounterSlot *p = tiered_counters;
-	
-	for (int i = 0; i < n; i++){
+	TieredStatusSlot *p = tiered_counters;
+	for (; p < next_tiered; p++){
 		if (p->method == 0)
 			break;
-		printf ("Method %s %d\n", p->method->name, p->counter);
+		printf ("%d %s\n", p->counter, mono_method_full_name (p->method, TRUE));
 	}
-	fflush (STDOUT);
+	fflush (stdout);
 }

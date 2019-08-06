@@ -1585,6 +1585,8 @@ typedef struct {
 	int stat_inlined_methods;
 	int stat_code_reallocs;
 
+	/* Tiered compilation, address where we will record where the code was generated */
+	void **tier0code;
 	MonoProfilerCallInstrumentationFlags prof_flags;
 	gboolean prof_coverage;
 
