@@ -7,6 +7,7 @@
  */
 
 #include <config.h>
+#include "../metadata/threads-types.h"
 #include "mini-tiered.h"
 #include "ir-emit.h"
 
@@ -25,29 +26,67 @@ static int ntiered = 4096;
 static TieredStatusSlot *next_tiered;
 static GSList *rejit_queue;
 
+static mono_cond_t rejit_wait;
+static mono_mutex_t rejit_mutex;
+
 //
 // FIXME: seems like I dont need the method now, since I have the slot with the data.
 void
 mini_tiered_rejit (MonoMethod *method, void *_slot)
 {
 	TieredStatusSlot *slot = _slot;
+	gboolean wakeup = FALSE;
+	
 	mono_os_mutex_lock (&tiered_queue_lock);
 	if (!slot->rejit_requested){
 		slot->rejit_requested = 1;
 		rejit_queue = g_slist_append (rejit_queue, slot);
+		wakeup = TRUE;
 	}
 	mono_os_mutex_unlock (&tiered_queue_lock);
-	
-	printf ("Rejitting %s at %p\n", mono_method_full_name (method, TRUE), slot->tiered_code);
+	if (wakeup)
+		mono_os_cond_signal (&rejit_wait);
+
+	//printf ("Requested Rejit %s at %p\n", mono_method_full_name (method, TRUE), slot->tiered_code);
+}
+
+static void
+recompiler_thread (void *arg)
+{
+	while (TRUE){
+		mono_os_cond_wait (&rejit_wait, &rejit_mutex);
+
+		if (mono_runtime_is_shutting_down ())
+			break;
+		
+		mono_os_mutex_lock (&tiered_queue_lock);
+		int count;
+		GSList *items = rejit_queue;
+		rejit_queue = NULL;
+		mono_os_mutex_unlock (&tiered_queue_lock);
+		
+		for (GSList *start = items; start != NULL; start = start->next){
+			TieredStatusSlot *slot = start->data;
+			
+			printf ("Rejitting: %s\n", mono_method_full_name (slot->method, TRUE));
+		}
+
+		mono_os_mutex_unlock (&rejit_mutex);
+	}
 }
 
 static void
 mini_tiered_init ()
 {
+	MonoError error;
 	tiered_counters = g_new0 (TieredStatusSlot, ntiered);
 	next_tiered = tiered_counters;
 
 	mono_os_mutex_init (&tiered_queue_lock);
+	mono_os_mutex_init (&rejit_mutex);
+	mono_os_cond_init (&rejit_wait);
+	
+	mono_thread_create_internal (mono_domain_get (), recompiler_thread, NULL, MONO_THREAD_CREATE_FLAGS_THREADPOOL, &error);
 }
 
 void
@@ -94,6 +133,12 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 	MONO_START_BB (cfg, resume_bb);
 
 	next_tiered++;
+}
+
+void
+mini_tiered_shutdown ()
+{
+	mono_os_cond_signal (&rejit_wait);
 }
 
 void

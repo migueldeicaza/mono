@@ -13,8 +13,9 @@
 #include "mini.h"
 
 void mini_tiered_emit_entry (MonoCompile *cfg);
-void mini_tiered_dump (void);
-void mini_tiered_rejit (MonoMethod *method, void *tier0code);
+void mini_tiered_dump       (void);
+void mini_tiered_rejit      (MonoMethod *method, void *tier0code);
+void mini_tiered_shutdown   (void);
 
 #endif /* __MONO_MINI_TIERED_H__ */
 

@@ -4729,6 +4729,7 @@ mini_cleanup (MonoDomain *domain)
 
 	MONO_PROFILER_RAISE (runtime_shutdown_begin, ());
 
+	mini_tiered_shutdown ();
 #ifndef DISABLE_COM
 	mono_cominterop_release_all_rcws ();
 #endif
