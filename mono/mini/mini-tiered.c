@@ -1,44 +1,100 @@
+
+
 /*
  * mini-tiered.c: Support for tiered compilation
  *
  * Licensed to the .NET Foundation under one or more agreements.
  * The .NET Foundation licenses this file to you under the MIT license.
  * See the LICENSE file in the project root for more information.
+ *
+ * TODO: resize the TieredStatusSlot block
+ *
+ * When the flag MONO_OPT_TIER0 is used as an optimization, tiered compilation
+ * will take place.   This is achieved by instrumenting the entry point of qualifying
+ * methods to track the number of times they have been invoked, and when this count
+ * is reached the method is queued for recompilation.
+ *
+ * We keep a background thread around that will recompile the methods and install
+ * the methods once compiled. 
  */
 
 #include <config.h>
-#include "../metadata/threads-types.h"
+#include <mono/metadata/threads-types.h>
+#include "mini-runtime.h"
 #include "mini-tiered.h"
 #include "ir-emit.h"
 
+/* The number of times before a method will be queued for being recompiled */
+#define REJIT_THRESHOLD 100
+
+/*
+ * This structure describes a method that has been instrumented for tiered compilation.
+ *
+ * The first field contains an integer that is incremented on entry by each tiered
+ * method and tracks the count.   When this reaches a predetermined number, this will
+ * set the "rejit_requested" field to 1, and wake up the recompilation thread.
+ *
+ * the 
+ *
+ * The structure tracks the domain where this should be compiled, and the method to
+ * be compiled.
+ */
 typedef struct {
+	/* Tracks the number of invocations to the method */
 	int counter;
+
+	/* The method handle */
 	MonoMethod *method;
-	void *tiered_code;
+
+	/* The domain for which this method was compiled */
+	MonoDomain *target_domain;
+
+	/* If set, we have determined that we should rejit this method */
 	int rejit_requested;
+
+	/* After a compilation step, this will point to the new code, or NULL on failure */
+	void *new_code;
+	
+	/*
+	 * This slot is updated by the MonoCompile method with the final address of the
+	 * generated code elsewhere.  That way we know how to go back and patch the
+	 * code
+	 */
+	void *tiered_code;
 } TieredStatusSlot;
 
+/* This locks protects the rejit_queue */
 static mono_mutex_t tiered_queue_lock;
-// Counters for the number of invocations
-static TieredStatusSlot *tiered_counters;
-// Number of counters to create
-static int ntiered = 4096;
-static TieredStatusSlot *next_tiered;
+
+/* The queue of methods to be rejited */
 static GSList *rejit_queue;
 
+/* Our tiered slots */
+static TieredStatusSlot *tiered_methods;
+
+/* Next available slot in the tiered_methods array to populate */
+static TieredStatusSlot *next_tiered;
+
+// Number of counters to create
+static int ntiered = 4096;
+
+/* Mutex and condition variable to wakeup the rejit method */
 static mono_cond_t rejit_wait;
 static mono_mutex_t rejit_mutex;
 
-//
-// FIXME: seems like I dont need the method now, since I have the slot with the data.
+/*
+ * A call to this method is inlined in the prologue of tiered compilation methods
+ */
 void
 mini_tiered_rejit (MonoMethod *method, void *_slot)
 {
+	// FIXME: the first parameter is probably redundant now, since we can it from the slot
 	TieredStatusSlot *slot = _slot;
 	gboolean wakeup = FALSE;
 	
 	mono_os_mutex_lock (&tiered_queue_lock);
 	if (!slot->rejit_requested){
+		g_assert (slot->method);
 		slot->rejit_requested = 1;
 		rejit_queue = g_slist_append (rejit_queue, slot);
 		wakeup = TRUE;
@@ -47,40 +103,85 @@ mini_tiered_rejit (MonoMethod *method, void *_slot)
 	if (wakeup)
 		mono_os_cond_signal (&rejit_wait);
 
-	//printf ("Requested Rejit %s at %p\n", mono_method_full_name (method, TRUE), slot->tiered_code);
+	printf ("Requested Rejit %s at %p %x\n", mono_method_full_name (method, TRUE), slot->tiered_code, MONO_OPT_LLVM);
 }
 
+/*
+ * Recompiles hot methods in the background.
+ * 
+ * This waits for work to be done, and once it is triggered, it attempts to batch compiler
+ * all the queued work.   Once that happens, it stops the world, and installs the new
+ * addresses, and resumes execution.
+ */
 static void
 recompiler_thread (void *arg)
 {
+	MonoInternalThread *internal = mono_thread_internal_current ();
+	internal->state |= ThreadState_Background;
+	internal->flags |= MONO_THREAD_FLAG_DONT_MANAGE;
+	mono_native_thread_set_name (mono_native_thread_id_get (), "Tiered Recompilation Thread");
+	
 	while (TRUE){
 		mono_os_cond_wait (&rejit_wait, &rejit_mutex);
 
 		if (mono_runtime_is_shutting_down ())
 			break;
-		
+
+		/*
+		 * Makes a copy of our homework
+		 */
 		mono_os_mutex_lock (&tiered_queue_lock);
-		int count;
 		GSList *items = rejit_queue;
 		rejit_queue = NULL;
 		mono_os_mutex_unlock (&tiered_queue_lock);
 		
+		MonoDomain *domain = mono_domain_get ();
 		for (GSList *start = items; start != NULL; start = start->next){
+			MonoError err;
 			TieredStatusSlot *slot = start->data;
-			
-			printf ("Rejitting: %s\n", mono_method_full_name (slot->method, TRUE));
+			void *new_code_addr;
+
+			printf ("Taking lock\n");
+			mono_loader_lock ();
+			mono_domain_lock(domain);
+			new_code_addr = mono_jit_compile_method_llvmjit_only (slot->method, &err);
+			mono_domain_unlock (domain);
+			mono_loader_unlock ();
+
+			printf ("Rejited: %s from %p to %p\n", mono_method_full_name (slot->method, TRUE), slot->tiered_code, new_code_addr);
+			if (is_ok (&err)){
+				slot->new_code = new_code_addr;
+			} else {
+				slot->new_code = NULL;
+				printf ("error rejiting: %s\n", mono_error_get_message (&err));
+			}
 		}
 
+		//
+		// Now pause the threads, and patch all the addresses
+		//
+		mono_gc_stop_world ();
+		for (GSList *start = items; start != NULL; start = start->next){
+			// Patch here
+		}		
+		mono_gc_restart_world ();
+
+
 		mono_os_mutex_unlock (&rejit_mutex);
+
+		g_slist_free (items);
 	}
 }
 
+/*
+ * Initializes the tiered compilation system.
+ */
 static void
 mini_tiered_init ()
 {
 	MonoError error;
-	tiered_counters = g_new0 (TieredStatusSlot, ntiered);
-	next_tiered = tiered_counters;
+	tiered_methods = g_new0 (TieredStatusSlot, ntiered);
+	next_tiered = tiered_methods;
 
 	mono_os_mutex_init (&tiered_queue_lock);
 	mono_os_mutex_init (&rejit_mutex);
@@ -89,6 +190,9 @@ mini_tiered_init ()
 	mono_thread_create_internal (mono_domain_get (), recompiler_thread, NULL, MONO_THREAD_CREATE_FLAGS_THREADPOOL, &error);
 }
 
+/*
+ * Invoked during compilation to insert the tracking code in the prologue of the method
+ */
 void
 mini_tiered_emit_entry (MonoCompile *cfg)
 {
@@ -99,14 +203,17 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 	if (cfg->disable_llvm)
 		return;
 
+	g_assert (cfg->method);
+		
 	NEW_BBLOCK (cfg, resume_bb);
 
-	if (tiered_counters == NULL)
+	if (tiered_methods == NULL)
 		mini_tiered_init ();
 
+	// Fill in next_tiered
 	cfg->tier0code = &next_tiered->tiered_code;
 	next_tiered->method = cfg->method;
-	//printf ("Count for %s is at %p\n", mono_method_full_name (cfg->method, TRUE), next_tiered);
+	next_tiered->target_domain = mono_domain_get ();
 
 	EMIT_NEW_PCONST (cfg, load_ins, next_tiered);
 	EMIT_NEW_ICONST (cfg, one_ins, 1);
@@ -118,33 +225,35 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 	ins->type = STACK_I4;
 	MONO_ADD_INS (cfg->cbb, ins);
 
-	MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, load_ins->dreg, 100);
+	MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, load_ins->dreg, REJIT_THRESHOLD);
 	MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBLT_UN, resume_bb);
 
-	{
-		MonoInst *iargs [2];
+	MonoInst *iargs [2];
+	EMIT_NEW_METHODCONST (cfg, iargs [0], cfg->method);
+	EMIT_NEW_PCONST (cfg, iargs [1], next_tiered);
 		
-		EMIT_NEW_METHODCONST (cfg, iargs [0], cfg->method);
-		EMIT_NEW_PCONST (cfg, iargs [1], next_tiered);
-		
-		mono_emit_jit_icall (cfg, mini_tiered_rejit, iargs);
-
-	}
+	mono_emit_jit_icall (cfg, mini_tiered_rejit, iargs);
 	MONO_START_BB (cfg, resume_bb);
 
 	next_tiered++;
 }
 
+/*
+ * Did not seem to work
+ */
 void
 mini_tiered_shutdown ()
 {
 	mono_os_cond_signal (&rejit_wait);
 }
 
+/*
+ * Debugging aid
+ */
 void
 mini_tiered_dump ()
 {
-	TieredStatusSlot *p = tiered_counters;
+	TieredStatusSlot *p = tiered_methods;
 	for (; p < next_tiered; p++){
 		if (p->method == 0)
 			break;

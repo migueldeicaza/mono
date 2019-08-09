@@ -122,14 +122,15 @@ static const gint16 opt_names [] = {
 	MONO_OPT_DEADCE |       \
 	MONO_OPT_BRANCH |	\
 	MONO_OPT_LINEARS |	\
-	MONO_OPT_INTRINS |  \
-	MONO_OPT_LOOP |  \
-	MONO_OPT_EXCEPTION |  \
-    MONO_OPT_CMOV |  \
+	MONO_OPT_INTRINS |	\
+	MONO_OPT_LOOP |		\
+	MONO_OPT_EXCEPTION |	\
+	MONO_OPT_CMOV |		\
 	MONO_OPT_GSHARED |	\
-	MONO_OPT_SIMD |	\
+	MONO_OPT_SIMD |		\
 	MONO_OPT_ALIAS_ANALYSIS	| \
-	MONO_OPT_AOT | \
+	MONO_OPT_AOT |		  \
+	MONO_OPT_TIER0 |		  \
 	MONO_OPT_FLOAT32)
 
 #define EXCLUDED_FROM_ALL (MONO_OPT_SHARED | MONO_OPT_PRECOMP | MONO_OPT_UNSAFE | MONO_OPT_GSHAREDVT)
@@ -276,6 +277,8 @@ mono_parse_default_optimizations (const char* p)
 	guint32 opt;
 
 	opt = parse_optimizations (DEFAULT_OPTIMIZATIONS, p, TRUE);
+	if (opt & MONO_OPT_TIER0)
+		mono_use_llvm = TRUE;
 	return opt;
 }
 

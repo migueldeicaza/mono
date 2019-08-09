@@ -3110,7 +3110,7 @@ mini_method_compile (MonoMethod *method, guint32 opts, MonoDomain *domain, JitFl
 	}
 
 #ifdef ENABLE_LLVM
-	try_llvm = mono_use_llvm || llvm;
+	try_llvm = opts & MONO_OPT_TIER0 ? 0 : (mono_use_llvm || llvm);
 #endif
 
 #ifndef MONO_ARCH_FLOAT32_SUPPORTED
@@ -4026,7 +4026,7 @@ mono_jit_compile_method_inner (MonoMethod *method, MonoDomain *target_domain, in
 	error_init (error);
 
 	start = mono_time_track_start ();
-	cfg = mini_method_compile (method, opt, target_domain, JIT_FLAG_RUN_CCTORS, 0, -1);
+	cfg = mini_method_compile (method, opt, target_domain, JIT_FLAG_RUN_CCTORS|((opt & MONO_OPT_LLVM) != 0 ? JIT_FLAG_LLVM : 0), 0, -1);
 	gint64 jit_time = 0.0;
 	mono_time_track_end (&jit_time, start);
 	UnlockedAdd64 (&mono_jit_stats.jit_time, jit_time);
@@ -4097,7 +4097,10 @@ mono_jit_compile_method_inner (MonoMethod *method, MonoDomain *target_domain, in
 	/* Check if some other thread already did the job. In this case, we can
        discard the code this thread generated. */
 
-	info = mini_lookup_method (target_domain, method, shared);
+	if ((opt & MONO_OPT_LLVM) == 0)
+		info = mini_lookup_method (target_domain, method, shared);
+	else
+		info = NULL;
 	if (info) {
 		/* We can't use a domain specific method in another domain */
 		if ((target_domain == mono_domain_get ()) || info->domain_neutral) {
@@ -4109,6 +4112,11 @@ mono_jit_compile_method_inner (MonoMethod *method, MonoDomain *target_domain, in
 	if (code == NULL) {
 		/* The lookup + insert is atomic since this is done inside the domain lock */
 		mono_domain_jit_code_hash_lock (target_domain);
+		if ((opt & MONO_OPT_LLVM) == MONO_OPT_LLVM){
+			gboolean r =  mono_internal_hash_table_remove (&target_domain->jit_code_hash, cfg->jit_info->d.method);
+			printf ("RemoveMethodFromHashRetursn: %d for %s\n", r, mono_method_full_name (cfg->jit_info->d.method, TRUE));
+		}
+		
 		mono_internal_hash_table_insert (&target_domain->jit_code_hash, cfg->jit_info->d.method, cfg->jit_info);
 		mono_domain_jit_code_hash_unlock (target_domain);
 
