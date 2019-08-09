@@ -2330,8 +2330,8 @@ mono_jit_compile_method_with_opt (MonoMethod *method, guint32 opt, gboolean jit_
 	}
 
 lookup_start:
-	/* UGLY HACK - if we pass MONO_OPT_LLVM, ignore the first lookup */
-	if (opt & MONO_OPT_LLVM){
+	/* UGLY HACK - if we pass MONO_OPT_REJIT, ignore the first lookup */
+	if (opt & MONO_OPT_REJIT){
 		info = NULL;
 	} else
 		info = lookup_method (target_domain, method);
@@ -2494,7 +2494,7 @@ mono_jit_compile_method_llvmjit_only (MonoMethod *method, MonoError *error)
 {
 	gpointer code;
 
-	code = mono_jit_compile_method_with_opt (method, MONO_OPT_LLVM | (mono_get_optimizations_for_method (method, default_opt) & ~MONO_OPT_TIER0), TRUE, error);
+	code = mono_jit_compile_method_with_opt (method, MONO_OPT_REJIT | (mono_get_optimizations_for_method (method, default_opt) & ~MONO_OPT_TIER0), TRUE, error);
 	return code;
 }
 

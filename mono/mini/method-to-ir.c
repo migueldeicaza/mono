@@ -6271,9 +6271,11 @@ mono_method_to_ir (MonoCompile *cfg, MonoMethod *method, MonoBasicBlock *start_b
 	init_localsbb2 = init_localsbb;
 	cfg->cbb = init_localsbb;
 
-	if (cfg->method == method)
-		mini_tiered_emit_entry (cfg);
-
+	if (cfg->method == method && (cfg->opt & MONO_OPT_TIER0)){
+		if (strcmp (cfg->method->name, ".cctor") != 0)
+			mini_tiered_emit_entry (cfg);
+	}
+	
 	if (cfg->gsharedvt && cfg->method == method) {
 		MonoGSharedVtMethodInfo *info;
 		MonoInst *var, *locals_var;

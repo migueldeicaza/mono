@@ -66,6 +66,8 @@ typedef struct {
 /* This locks protects the rejit_queue */
 static mono_mutex_t tiered_queue_lock;
 
+static mono_mutex_t tiered_updates;
+
 /* The queue of methods to be rejited */
 static GSList *rejit_queue;
 
@@ -95,15 +97,17 @@ mini_tiered_rejit (MonoMethod *method, void *_slot)
 	mono_os_mutex_lock (&tiered_queue_lock);
 	if (!slot->rejit_requested){
 		g_assert (slot->method);
+		if (slot->method == NULL)
+			return;
 		slot->rejit_requested = 1;
 		rejit_queue = g_slist_append (rejit_queue, slot);
 		wakeup = TRUE;
 	}
 	mono_os_mutex_unlock (&tiered_queue_lock);
-	if (wakeup)
+	if (wakeup){
 		mono_os_cond_signal (&rejit_wait);
-
-	printf ("Requested Rejit %s at %p %x\n", mono_method_full_name (method, TRUE), slot->tiered_code, MONO_OPT_LLVM);
+		printf ("QUEUE %s at %p count=%d\n", mono_method_full_name (method, TRUE), slot->tiered_code, slot->counter);
+	}
 }
 
 /*
@@ -141,14 +145,13 @@ recompiler_thread (void *arg)
 			TieredStatusSlot *slot = start->data;
 			void *new_code_addr;
 
-			printf ("Taking lock\n");
 			mono_loader_lock ();
 			mono_domain_lock(domain);
 			new_code_addr = mono_jit_compile_method_llvmjit_only (slot->method, &err);
 			mono_domain_unlock (domain);
 			mono_loader_unlock ();
 
-			printf ("Rejited: %s from %p to %p\n", mono_method_full_name (slot->method, TRUE), slot->tiered_code, new_code_addr);
+			printf ("NEWCODE: %s from %p to %p\n", mono_method_full_name (slot->method, TRUE), slot->tiered_code, new_code_addr);
 			if (is_ok (&err)){
 				slot->new_code = new_code_addr;
 			} else {
@@ -176,17 +179,19 @@ recompiler_thread (void *arg)
 /*
  * Initializes the tiered compilation system.
  */
-static void
+void
 mini_tiered_init ()
 {
 	MonoError error;
+	
 	tiered_methods = g_new0 (TieredStatusSlot, ntiered);
 	next_tiered = tiered_methods;
 
 	mono_os_mutex_init (&tiered_queue_lock);
+	mono_os_mutex_init (&tiered_updates);
 	mono_os_mutex_init (&rejit_mutex);
 	mono_os_cond_init (&rejit_wait);
-	
+		
 	mono_thread_create_internal (mono_domain_get (), recompiler_thread, NULL, MONO_THREAD_CREATE_FLAGS_THREADPOOL, &error);
 }
 
@@ -198,24 +203,33 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 {
 	MonoInst *one_ins, *load_ins, *ins;
 	MonoBasicBlock *resume_bb;
-
+	TieredStatusSlot *slot;
 	// We know that LLVM wont work for this method, do not instrument
 	if (cfg->disable_llvm)
 		return;
 
-	g_assert (cfg->method);
-		
-	NEW_BBLOCK (cfg, resume_bb);
-
-	if (tiered_methods == NULL)
+	if (tiered_methods == NULL){
 		mini_tiered_init ();
+	}
+	
+	mono_os_mutex_lock (&tiered_updates);
+	if (next_tiered < (tiered_methods+ntiered)){
+		slot = next_tiered;
+		next_tiered++;
+	} else
+		slot = NULL;
+	mono_os_mutex_unlock (&tiered_updates);
 
-	// Fill in next_tiered
-	cfg->tier0code = &next_tiered->tiered_code;
-	next_tiered->method = cfg->method;
-	next_tiered->target_domain = mono_domain_get ();
+	if (slot == NULL)
+		return;
+			
+	NEW_BBLOCK (cfg, resume_bb);
+	
+	cfg->tier0code = &slot->tiered_code;
+	slot->method = cfg->method;
+	slot->target_domain = mono_domain_get ();
 
-	EMIT_NEW_PCONST (cfg, load_ins, next_tiered);
+	EMIT_NEW_PCONST (cfg, load_ins, slot);
 	EMIT_NEW_ICONST (cfg, one_ins, 1);
 	MONO_INST_NEW (cfg, ins, OP_ATOMIC_ADD_I4);
 	ins->dreg = mono_alloc_ireg (cfg);
@@ -230,12 +244,10 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 
 	MonoInst *iargs [2];
 	EMIT_NEW_METHODCONST (cfg, iargs [0], cfg->method);
-	EMIT_NEW_PCONST (cfg, iargs [1], next_tiered);
+	EMIT_NEW_PCONST (cfg, iargs [1], slot);
 		
 	mono_emit_jit_icall (cfg, mini_tiered_rejit, iargs);
 	MONO_START_BB (cfg, resume_bb);
-
-	next_tiered++;
 }
 
 /*
@@ -244,7 +256,8 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 void
 mini_tiered_shutdown ()
 {
-	mono_os_cond_signal (&rejit_wait);
+	if (tiered_methods != NULL)
+		mono_os_cond_signal (&rejit_wait);
 }
 
 /*

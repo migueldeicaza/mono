@@ -58,6 +58,7 @@
 #include "mono/metadata/custom-attrs-internals.h"
 
 #include "mini.h"
+#include "mini-tiered.h"
 #include "jit.h"
 #include "aot-compiler.h"
 #include "aot-runtime.h"
@@ -2473,7 +2474,6 @@ mono_main (int argc, char* argv[])
 	}
 
 	mono_counters_init ();
-
 #ifndef HOST_WIN32
 	mono_w32handle_init ();
 #endif
