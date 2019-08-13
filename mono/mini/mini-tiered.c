@@ -222,8 +222,7 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 
 	if (slot == NULL)
 		return;
-			
-	NEW_BBLOCK (cfg, resume_bb);
+
 	
 	cfg->tier0code = &slot->tiered_code;
 	slot->method = cfg->method;
@@ -239,7 +238,9 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 	ins->type = STACK_I4;
 	MONO_ADD_INS (cfg->cbb, ins);
 
-	MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, load_ins->dreg, REJIT_THRESHOLD);
+	MONO_EMIT_NEW_BIALU_IMM (cfg, OP_COMPARE_IMM, -1, ins->dreg, REJIT_THRESHOLD);
+
+	NEW_BBLOCK (cfg, resume_bb);
 	MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBLT_UN, resume_bb);
 
 	MonoInst *iargs [2];
