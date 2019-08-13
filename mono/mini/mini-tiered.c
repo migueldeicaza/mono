@@ -172,11 +172,12 @@ recompiler_thread (void *arg)
 			uint8_t *ptr = slot->tiered_code;
 
 #if defined(TARGET_AMD64)
-			amd64_jump_code (ptr, slot->new_code);
+			if (slot->new_code)
+				amd64_jump_code (ptr, slot->new_code);
 #else
 # error Tiered compilation not working here
 #endif
-		}		
+		}
 		mono_gc_restart_world ();
 
 		mono_os_mutex_unlock (&rejit_mutex);

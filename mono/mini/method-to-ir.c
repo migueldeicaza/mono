@@ -6277,6 +6277,12 @@ mono_method_to_ir (MonoCompile *cfg, MonoMethod *method, MonoBasicBlock *start_b
 		}
 	}
 
+	//
+	// Tiered compilation:
+	// If we are using tiered compilation, and
+	// - we are not compiling a method that contains managed-to-native code (which LLVM can not compile anyways)
+	// - and it is not a static constructor (we wont ever use those again), 
+	// then instrument for tiered compilation
 	if (cfg->method == method && (cfg->opt & MONO_OPT_TIER0) && !cfg->method->save_lmf){
 		if (strcmp (cfg->method->name, ".cctor") != 0)
 			mini_tiered_emit_entry (cfg);
