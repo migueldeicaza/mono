@@ -20,6 +20,7 @@
 
 #include <config.h>
 #include <mono/metadata/threads-types.h>
+#include <mono/utils/mono-logger-internals.h>
 #include "mini-runtime.h"
 #include "mini-tiered.h"
 #include "ir-emit.h"
@@ -53,14 +54,14 @@ typedef struct {
 	int rejit_requested;
 
 	/* After a compilation step, this will point to the new code, or NULL on failure */
-	void *new_code;
+	uint8_t *new_code;
 	
 	/*
 	 * This slot is updated by the MonoCompile method with the final address of the
 	 * generated code elsewhere.  That way we know how to go back and patch the
 	 * code
 	 */
-	void *tiered_code;
+	uint8_t *tiered_code;
 } TieredStatusSlot;
 
 /* This locks protects the rejit_queue */
@@ -84,6 +85,7 @@ static int ntiered = 4096;
 static mono_cond_t rejit_wait;
 static mono_mutex_t rejit_mutex;
 
+static int tiered_verbose;
 /*
  * A call to this method is inlined in the prologue of tiered compilation methods
  */
@@ -106,7 +108,7 @@ mini_tiered_rejit (MonoMethod *method, void *_slot)
 	mono_os_mutex_unlock (&tiered_queue_lock);
 	if (wakeup){
 		mono_os_cond_signal (&rejit_wait);
-		printf ("QUEUE %s at %p count=%d\n", mono_method_full_name (method, TRUE), slot->tiered_code, slot->counter);
+		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_TIERED, "Tiered-hot method: queuing '%s' at %p hit-count=%d\n", mono_method_full_name (method, TRUE), slot->tiered_code, slot->counter);
 	}
 }
 
@@ -151,12 +153,13 @@ recompiler_thread (void *arg)
 			mono_domain_unlock (domain);
 			mono_loader_unlock ();
 
-			printf ("NEWCODE: %s from %p to %p\n", mono_method_full_name (slot->method, TRUE), slot->tiered_code, new_code_addr);
 			if (is_ok (&err)){
 				slot->new_code = new_code_addr;
+				mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_TIERED,
+					    "Tiered-replaced: %s method at %p with %p\n", mono_method_full_name (slot->method, TRUE), slot->tiered_code, slot->new_code);
 			} else {
 				slot->new_code = NULL;
-				printf ("error rejiting: %s\n", mono_error_get_message (&err));
+				mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_TIERED, "Tiered-error rejiting: %s\n", mono_error_get_message (&err));
 			}
 		}
 
@@ -165,10 +168,16 @@ recompiler_thread (void *arg)
 		//
 		mono_gc_stop_world ();
 		for (GSList *start = items; start != NULL; start = start->next){
-			// Patch here
+			TieredStatusSlot *slot = start->data;
+			uint8_t *ptr = slot->tiered_code;
+
+#if defined(TARGET_AMD64)
+			amd64_jump_code (ptr, slot->new_code);
+#else
+# error Tiered compilation not working here
+#endif
 		}		
 		mono_gc_restart_world ();
-
 
 		mono_os_mutex_unlock (&rejit_mutex);
 
@@ -207,6 +216,8 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 	// We know that LLVM wont work for this method, do not instrument
 	if (cfg->disable_llvm)
 		return;
+
+	tiered_verbose = cfg->verbose_level;
 
 	if (tiered_methods == NULL){
 		mini_tiered_init ();

@@ -6272,6 +6272,12 @@ mono_method_to_ir (MonoCompile *cfg, MonoMethod *method, MonoBasicBlock *start_b
 	cfg->cbb = init_localsbb;
 
 	if (cfg->method == method && (cfg->opt & MONO_OPT_TIER0)){
+		if (cfg->method->save_lmf){
+			printf ("Can not tier compile: %s\n", mono_method_full_name (cfg->method, TRUE));
+		}
+	}
+
+	if (cfg->method == method && (cfg->opt & MONO_OPT_TIER0) && !cfg->method->save_lmf){
 		if (strcmp (cfg->method->name, ".cctor") != 0)
 			mini_tiered_emit_entry (cfg);
 	}
@@ -11120,6 +11126,7 @@ mono_ldptr:
 	}
 
 	cfg->cbb = init_localsbb;
+
 	mini_profiler_emit_enter (cfg);
 	
 	if (seq_points) {

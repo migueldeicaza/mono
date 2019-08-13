@@ -1586,7 +1586,7 @@ typedef struct {
 	int stat_code_reallocs;
 
 	/* Tiered compilation, address where we will record where the code was generated */
-	void **tier0code;
+	uint8_t **tier0code;
 	MonoProfilerCallInstrumentationFlags prof_flags;
 	gboolean prof_coverage;
 
