@@ -6271,12 +6271,6 @@ mono_method_to_ir (MonoCompile *cfg, MonoMethod *method, MonoBasicBlock *start_b
 	init_localsbb2 = init_localsbb;
 	cfg->cbb = init_localsbb;
 
-	if (cfg->method == method && (cfg->opt & MONO_OPT_TIER0)){
-		if (cfg->method->save_lmf){
-			printf ("Can not tier compile: %s\n", mono_method_full_name (cfg->method, TRUE));
-		}
-	}
-
 	//
 	// Tiered compilation:
 	// If we are using tiered compilation, and

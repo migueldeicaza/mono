@@ -4415,7 +4415,7 @@ register_icalls (void)
 	g_assert (mono_get_lmf_addr == mono_tls_get_lmf_addr);
 	register_icall (mono_jit_set_domain, mono_icall_sig_void_ptr, TRUE);
 	register_icall (mono_domain_get, mono_icall_sig_ptr, TRUE);
-	register_icall (mini_tiered_rejit, mono_icall_sig_void_ptr_ptr, TRUE);
+	register_icall (mini_tiered_rejit, mono_icall_sig_void_ptr, TRUE);
 
 	register_icall (mono_llvm_throw_exception, mono_icall_sig_void_object, TRUE);
 	register_icall (mono_llvm_rethrow_exception, mono_icall_sig_void_object, TRUE);

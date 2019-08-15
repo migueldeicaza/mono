@@ -39,19 +39,21 @@
  *
  * The structure tracks the domain where this should be compiled, and the method to
  * be compiled.
+ * Ideas to shrink this 40-byte structure:
+ *   - Once the got has been jitted, we could store "new_code" into "target_domain"
  */
 typedef struct {
-	/* Tracks the number of invocations to the method */
+	/* Tracks the number of invocations to the method, must be first field (referenced from the generated code) */
 	int counter;
+
+	/* If set, we have determined that we should rejit this method */
+	int rejit_requested;
 
 	/* The method handle */
 	MonoMethod *method;
 
 	/* The domain for which this method was compiled */
 	MonoDomain *target_domain;
-
-	/* If set, we have determined that we should rejit this method */
-	int rejit_requested;
 
 	/* After a compilation step, this will point to the new code, or NULL on failure */
 	uint8_t *new_code;
@@ -90,7 +92,7 @@ static int tiered_verbose;
  * A call to this method is inlined in the prologue of tiered compilation methods
  */
 void
-mini_tiered_rejit (MonoMethod *method, void *_slot)
+mini_tiered_rejit (void *_slot)
 {
 	// FIXME: the first parameter is probably redundant now, since we can it from the slot
 	TieredStatusSlot *slot = _slot;
@@ -108,7 +110,7 @@ mini_tiered_rejit (MonoMethod *method, void *_slot)
 	mono_os_mutex_unlock (&tiered_queue_lock);
 	if (wakeup){
 		mono_os_cond_signal (&rejit_wait);
-		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_TIERED, "Tiered-hot method: queuing '%s' at %p hit-count=%d\n", mono_method_full_name (method, TRUE), slot->tiered_code, slot->counter);
+		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_TIERED, "Tiered-hot method: queuing '%s' at %p hit-count=%d\n", mono_method_full_name (slot->method, TRUE), slot->tiered_code, slot->counter);
 	}
 }
 
@@ -255,9 +257,8 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 	NEW_BBLOCK (cfg, resume_bb);
 	MONO_EMIT_NEW_BRANCH_BLOCK (cfg, OP_PBLT_UN, resume_bb);
 
-	MonoInst *iargs [2];
-	EMIT_NEW_METHODCONST (cfg, iargs [0], cfg->method);
-	EMIT_NEW_PCONST (cfg, iargs [1], slot);
+	MonoInst *iargs [1];
+	EMIT_NEW_PCONST (cfg, iargs [0], slot);
 		
 	mono_emit_jit_icall (cfg, mini_tiered_rejit, iargs);
 	MONO_START_BB (cfg, resume_bb);
