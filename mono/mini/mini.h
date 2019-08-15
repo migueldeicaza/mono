@@ -1647,8 +1647,11 @@ typedef struct {
 	gint32 methods_with_llvm;
 	gint32 methods_without_llvm;
 	gint32 methods_with_interp;
+	gint32 methods_rejited;
+	gint32 methods_rejit_failed;
 	char *max_ratio_method;
 	char *biggest_method;
+	gint64 rejit_method_to_ir;
 	gint64 jit_method_to_ir;
 	gint64 jit_liveness_handle_exception_clauses;
 	gint64 jit_handle_out_of_line_bblock;

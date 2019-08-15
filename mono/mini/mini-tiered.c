@@ -151,15 +151,17 @@ recompiler_thread (void *arg)
 
 			mono_loader_lock ();
 			mono_domain_lock(domain);
-			new_code_addr = mono_jit_compile_method_llvmjit_only (slot->method, &err);
+			MONO_TIME_TRACK(mono_jit_stats.rejit_method_to_ir, new_code_addr = mono_jit_compile_method_llvmjit_only (slot->method, &err));
 			mono_domain_unlock (domain);
 			mono_loader_unlock ();
 
 			if (is_ok (&err)){
+				mono_atomic_fetch_add_i32 (&mono_jit_stats.methods_rejited, 1);
 				slot->new_code = new_code_addr;
 				mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_TIERED,
 					    "Tiered-replaced: %s method at %p with %p\n", mono_method_full_name (slot->method, TRUE), slot->tiered_code, slot->new_code);
 			} else {
+				mono_atomic_fetch_add_i32 (&mono_jit_stats.methods_rejit_failed, 1);
 				slot->new_code = NULL;
 				mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_TIERED, "Tiered-error rejiting: %s\n", mono_error_get_message (&err));
 			}
