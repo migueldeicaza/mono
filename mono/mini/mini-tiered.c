@@ -67,9 +67,9 @@ typedef struct {
 } TieredStatusSlot;
 
 /* This locks protects the rejit_queue */
-static mono_mutex_t tiered_queue_lock;
+static MonoCoopMutex tiered_queue_lock;
 
-static mono_mutex_t tiered_updates;
+static MonoCoopMutex tiered_updates;
 
 /* The queue of methods to be rejited */
 static GSList *rejit_queue;
@@ -84,8 +84,8 @@ static TieredStatusSlot *next_tiered;
 static int ntiered = 4096;
 
 /* Mutex and condition variable to wakeup the rejit method */
-static mono_cond_t rejit_wait;
-static mono_mutex_t rejit_mutex;
+static MonoCoopCond rejit_wait;
+static MonoCoopMutex rejit_mutex;
 
 static int tiered_verbose;
 /*
@@ -98,7 +98,7 @@ mini_tiered_rejit (void *_slot)
 	TieredStatusSlot *slot = _slot;
 	gboolean wakeup = FALSE;
 	
-	mono_os_mutex_lock (&tiered_queue_lock);
+	mono_coop_mutex_lock (&tiered_queue_lock);
 	if (!slot->rejit_requested){
 		g_assert (slot->method);
 		if (slot->method == NULL)
@@ -107,9 +107,9 @@ mini_tiered_rejit (void *_slot)
 		rejit_queue = g_slist_append (rejit_queue, slot);
 		wakeup = TRUE;
 	}
-	mono_os_mutex_unlock (&tiered_queue_lock);
+	mono_coop_mutex_unlock (&tiered_queue_lock);
 	if (wakeup){
-		mono_os_cond_signal (&rejit_wait);
+		mono_coop_cond_signal (&rejit_wait);
 		mono_trace (G_LOG_LEVEL_DEBUG, MONO_TRACE_TIERED, "Tiered-hot method: queuing '%s' at %p hit-count=%d\n", mono_method_full_name (slot->method, TRUE), slot->tiered_code, slot->counter);
 	}
 }
@@ -130,7 +130,7 @@ recompiler_thread (void *arg)
 	mono_native_thread_set_name (mono_native_thread_id_get (), "Tiered Recompilation Thread");
 	
 	while (TRUE){
-		mono_os_cond_wait (&rejit_wait, &rejit_mutex);
+		mono_coop_cond_wait (&rejit_wait, &rejit_mutex);
 
 		if (mono_runtime_is_shutting_down ())
 			break;
@@ -138,10 +138,10 @@ recompiler_thread (void *arg)
 		/*
 		 * Makes a copy of our homework
 		 */
-		mono_os_mutex_lock (&tiered_queue_lock);
+		mono_coop_mutex_lock (&tiered_queue_lock);
 		GSList *items = rejit_queue;
 		rejit_queue = NULL;
-		mono_os_mutex_unlock (&tiered_queue_lock);
+		mono_coop_mutex_unlock (&tiered_queue_lock);
 		
 		MonoDomain *domain = mono_domain_get ();
 		for (GSList *start = items; start != NULL; start = start->next){
@@ -182,7 +182,7 @@ recompiler_thread (void *arg)
 		}
 		mono_gc_restart_world ();
 
-		mono_os_mutex_unlock (&rejit_mutex);
+		mono_coop_mutex_unlock (&rejit_mutex);
 
 		g_slist_free (items);
 	}
@@ -204,10 +204,10 @@ mini_tiered_init ()
 	MonoError error;
 	
 	allocate_tiered_buffers ();
-	mono_os_mutex_init (&tiered_queue_lock);
-	mono_os_mutex_init (&tiered_updates);
-	mono_os_mutex_init (&rejit_mutex);
-	mono_os_cond_init (&rejit_wait);
+	mono_coop_mutex_init (&tiered_queue_lock);
+	mono_coop_mutex_init (&tiered_updates);
+	mono_coop_mutex_init (&rejit_mutex);
+	mono_coop_cond_init (&rejit_wait);
 		
 	mono_thread_create_internal (mono_domain_get (), recompiler_thread, NULL, MONO_THREAD_CREATE_FLAGS_THREADPOOL, &error);
 }
@@ -231,20 +231,20 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 		mini_tiered_init ();
 	}
 	
-	mono_os_mutex_lock (&tiered_updates);
+	mono_coop_mutex_lock (&tiered_updates);
 	if (next_tiered >= (tiered_methods+ntiered))
 		allocate_tiered_buffers ();
 	
 	slot = next_tiered;
 	next_tiered++;
-	mono_os_mutex_unlock (&tiered_updates);
+	mono_coop_mutex_unlock (&tiered_updates);
 
 	if (slot == NULL)
 		return;
 
 	
 	cfg->tier0code = &slot->tiered_code;
-	slot->method = cfg->method;
+	slot->method = cfg->orig_method;
 	slot->target_domain = mono_domain_get ();
 
 	EMIT_NEW_PCONST (cfg, load_ins, slot);
@@ -276,7 +276,7 @@ void
 mini_tiered_shutdown ()
 {
 	if (tiered_methods != NULL)
-		mono_os_cond_signal (&rejit_wait);
+		mono_coop_cond_signal (&rejit_wait);
 }
 
 /*

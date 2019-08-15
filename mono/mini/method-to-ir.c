@@ -6064,8 +6064,13 @@ mono_method_to_ir (MonoCompile *cfg, MonoMethod *method, MonoBasicBlock *start_b
 		generic_context = &generic_container->context;
 	cfg->generic_context = generic_context;
 
-	if (!cfg->gshared)
+	if (!cfg->gshared){
+		// If you hit the assertion below, it likely means that you are trying to compile
+		// a generic method definition, and you should be compiling the instance instead.
+		//
+		// this is the `orig_method` on the MonoCompile
 		g_assert (!sig->has_type_parameters);
+	}
 
 	if (sig->generic_param_count && method->wrapper_type == MONO_WRAPPER_NONE) {
 		g_assert (method->is_inflated);

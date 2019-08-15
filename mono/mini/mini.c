@@ -4026,6 +4026,11 @@ mono_jit_compile_method_inner (MonoMethod *method, MonoDomain *target_domain, in
 	error_init (error);
 
 	start = mono_time_track_start ();
+
+	//
+	// MONO_OPT_REJIT means that we are rejiting a method that was previously instrumented with tiered
+	// compilation, so we turn on the JIT_FLAG_LLVM.
+	//
 	cfg = mini_method_compile (method, opt, target_domain, JIT_FLAG_RUN_CCTORS|((opt & MONO_OPT_REJIT) != 0 ? JIT_FLAG_LLVM : 0), 0, -1);
 	gint64 jit_time = 0.0;
 	mono_time_track_end (&jit_time, start);
