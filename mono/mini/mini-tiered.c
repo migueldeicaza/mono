@@ -188,6 +188,13 @@ recompiler_thread (void *arg)
 	}
 }
 
+static void
+allocate_tiered_buffers()
+{
+       tiered_methods = g_new0 (TieredStatusSlot, ntiered);
+       next_tiered = tiered_methods;
+}
+
 /*
  * Initializes the tiered compilation system.
  */
@@ -196,9 +203,7 @@ mini_tiered_init ()
 {
 	MonoError error;
 	
-	tiered_methods = g_new0 (TieredStatusSlot, ntiered);
-	next_tiered = tiered_methods;
-
+	allocate_tiered_buffers ();
 	mono_os_mutex_init (&tiered_queue_lock);
 	mono_os_mutex_init (&tiered_updates);
 	mono_os_mutex_init (&rejit_mutex);
@@ -227,11 +232,11 @@ mini_tiered_emit_entry (MonoCompile *cfg)
 	}
 	
 	mono_os_mutex_lock (&tiered_updates);
-	if (next_tiered < (tiered_methods+ntiered)){
-		slot = next_tiered;
-		next_tiered++;
-	} else
-		slot = NULL;
+	if (next_tiered >= (tiered_methods+ntiered))
+		allocate_tiered_buffers ();
+	
+	slot = next_tiered;
+	next_tiered++;
 	mono_os_mutex_unlock (&tiered_updates);
 
 	if (slot == NULL)
