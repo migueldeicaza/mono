@@ -5,6 +5,13 @@ class XamarinGtkThemePackage (Package):
                          sources=[
                              'git://github.com/mono/xamarin-gtk-theme.git'],
                          revision='fa8ba3e38edb070eb8b0a70be64f9c10f9b523c2')
+	self.sources.extend(["patches/xamarin-gtk-theme-prototype.patch"])
+
+    def prep(self):
+        Package.prep(self)
+        if Package.profile.name == 'darwin':
+            for p in range(1, len(self.local_sources)):
+                self.sh('patch -p1 < "%{local_sources[' + str(p) + ']}"')
 
     def build(self):
         try:

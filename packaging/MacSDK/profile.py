@@ -72,11 +72,6 @@ class MonoReleaseProfile(DarwinProfile):
         if free_space < 10:
             error('Low disk space (less than 10GB), aborting')
 
-        # check for XQuartz installation (needed for libgdiplus)
-        if not os.path.exists('/opt/X11/include/X11/Xlib.h'):
-            error(
-                'XQuartz is required to be installed (download from http://xquartz.macosforge.org/) ')
-
         self.MONO_ROOT = "/Library/Frameworks/Mono.framework"
         self.BUILD_NUMBER = "0"
         self.MDK_GUID = "964ebddd-1ffe-47e7-8128-5ce17ffffb05"
@@ -292,7 +287,10 @@ class MonoReleaseProfile(DarwinProfile):
             arch_str = "x64"
         elif arch == "darwin-universal":
             arch_str = "universal"
+	elif arch == "darwin-arm64":
+	    arch_str = "arm64" 
         else:
+	    print (arch)
             error ("Unknown architecture")
 
         if self.bockbuild.cmd_options.release_build:

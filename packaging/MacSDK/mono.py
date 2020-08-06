@@ -15,7 +15,9 @@ class MonoMasterPackage(Package):
                          revision=os.getenv('MONO_BUILD_REVISION'),
                          configure_flags=[
                              '--enable-nls=no',
-                             '--with-ikvm=yes'
+                             '--with-ikvm=yes',
+			     '--host=aarch64-apple-darwin20.0.0', 
+			     '--target=aarch64-apple-darwin20.0.0'
                          ]
                          )
         self.source_dir_name = 'mono'
@@ -64,8 +66,12 @@ class MonoMasterPackage(Package):
 
     def arch_build(self, arch):
         Package.profile.arch_build(arch, self)
+	print ("And arch is")
+	print (arch)
         if arch == 'darwin-64':  # 64-bit build pass
-            self.local_configure_flags.extend (['--build=x86_64-apple-darwin13.0.0', '--disable-boehm'])
+	    self.local_configure_flags.extend (['--host=aarch64-apple-darwin20.0.0', '--target=aarch64-apple-darwin20.0.0', '--disable-boehm', '--disable-llvm', '--disable-nls', ' --disable-btls'])
+
+            #self.local_configure_flags.extend (['--build=x86_64-apple-darwin13.0.0', '--disable-boehm'])
 
         if arch == 'darwin-32':  # 32-bit build pass
             self.local_configure_flags.extend (['--build=i386-apple-darwin13.0.0'])
